@@ -1,4 +1,4 @@
-import { Search, Trash2 } from "lucide-react";
+import { FileCheck2, Search, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -20,6 +20,7 @@ export function DocumentDetailPage() {
   const id = documentId ?? "";
   const document = useApi(() => api.getDocument(id), [id]);
   const chunks = useApi(() => api.listChunks(id), [id]);
+  const evidence = useApi(() => api.listEvidenceUnits(id), [id]);
   const [search, setSearch] = useState("");
   const [type, setType] = useState("all");
 
@@ -43,7 +44,7 @@ export function DocumentDetailPage() {
     navigate("/documents");
   }
 
-  if (document.loading || chunks.loading) return <Skeleton className="h-[520px]" />;
+  if (document.loading || chunks.loading || evidence.loading) return <Skeleton className="h-[520px]" />;
   if (document.error || chunks.error || !document.data) {
     return <RetryState message={document.error ?? chunks.error ?? "无法加载文档"} onRetry={document.refresh} />;
   }
@@ -62,6 +63,7 @@ export function DocumentDetailPage() {
                 <Badge variant="success">{document.data.parse_status}</Badge>
                 <Badge variant="outline">{document.data.id}</Badge>
                 <Badge variant="outline">{chunks.data?.length ?? 0} chunks</Badge>
+                <Badge variant="secondary">{evidence.data?.length ?? 0} evidence units</Badge>
               </div>
             </div>
             <Button variant="destructive" onClick={() => void handleDelete()}>
@@ -79,19 +81,45 @@ export function DocumentDetailPage() {
       </Card>
 
       <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>章节结构</CardTitle>
-            <CardDescription>由 chunk 的 section_path 汇总。</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {sectionTree.map((section) => (
-              <div key={section} className="rounded-md border border-border px-3 py-2 text-sm">
-                {section}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>章节结构</CardTitle>
+              <CardDescription>由 chunk 的 section_path 汇总。</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {sectionTree.map((section) => (
+                <div key={section} className="rounded-md border border-border px-3 py-2 text-sm">
+                  {section}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileCheck2 className="h-4 w-4" />
+                Evidence Units
+              </CardTitle>
+              <CardDescription>入库阶段生成的医学证据单元。</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {(evidence.data ?? []).slice(0, 12).map((unit) => (
+                <div key={unit.id} className="rounded-md border border-border p-3 text-sm">
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    <Badge variant="secondary">{unit.evidence_type}</Badge>
+                    <Badge variant="outline">{unit.canonical_section}</Badge>
+                  </div>
+                  <div className="line-clamp-4 text-muted-foreground">{unit.claim_text}</div>
+                </div>
+              ))}
+              {(evidence.data ?? []).length === 0 ? (
+                <div className="text-sm text-muted-foreground">暂无 evidence units。</div>
+              ) : null}
+            </CardContent>
+          </Card>
+        </div>
 
         <Card>
           <CardHeader>

@@ -5,21 +5,21 @@ from hashlib import sha1
 from backend.app.schemas.parsed import Chunk, Figure, ParsedDocument, Section, Table
 
 MEDICAL_SECTION_PATTERNS = {
-    "abstract": r"abstract|summary",
-    "primary outcome": r"primary outcome|primary endpoint",
-    "secondary outcome": r"secondary outcome|secondary endpoint",
+    "abstract": r"abstract|summary|摘要",
+    "primary outcome": r"primary outcome|primary endpoint|主要结局|主要终点",
+    "secondary outcome": r"secondary outcome|secondary endpoint|次要结局|次要终点",
     "subgroup analysis": r"subgroup analysis",
     "sensitivity analysis": r"sensitivity analysis",
-    "adverse events": r"adverse events?|safety|harms?",
-    "participants": r"participants|patients|population|eligibility",
-    "intervention": r"intervention|treatment|randomization",
-    "outcomes": r"outcomes?|endpoints?",
-    "introduction": r"introduction|background",
-    "methods": r"methods?|materials and methods|study design",
-    "results": r"results|findings",
-    "discussion": r"discussion",
-    "conclusion": r"conclusions?",
-    "limitations": r"limitations?",
+    "adverse events": r"adverse events?|safety|harms?|不良|安全",
+    "participants": r"participants|patients|population|eligibility|受试者|患者|纳入|排除",
+    "intervention": r"intervention|treatment|randomization|干预|治疗|随机",
+    "outcomes": r"outcomes?|endpoints?|结局|终点",
+    "introduction": r"introduction|background|引言|背景",
+    "methods": r"methods?|materials and methods|study design|方法|研究设计",
+    "results": r"results|findings|结果",
+    "discussion": r"discussion|讨论",
+    "conclusion": r"conclusions?|结论",
+    "limitations": r"limitations?|局限",
 }
 
 
@@ -106,6 +106,7 @@ class MedicalSemanticChunker:
                 metadata={
                     "section_path": section_path,
                     "canonical_section": self._canonical_section(section_path),
+                    "evidence_type": self._evidence_type(section_path, "text"),
                 },
             )
             for idx, group in enumerate(groups)
@@ -135,6 +136,7 @@ class MedicalSemanticChunker:
             metadata={
                 "section_path": section_path,
                 "canonical_section": self._canonical_section(section_path),
+                "evidence_type": "table_evidence",
                 "table_id": table.table_id,
             },
         )
@@ -158,6 +160,7 @@ class MedicalSemanticChunker:
             metadata={
                 "section_path": section_path,
                 "canonical_section": self._canonical_section(section_path),
+                "evidence_type": "figure_evidence",
                 "figure_id": figure.figure_id,
             },
         )
@@ -204,6 +207,26 @@ class MedicalSemanticChunker:
         if canonical in {"methods", "participants", "intervention"}:
             return "study_design"
         return None
+
+    def _evidence_type(self, section_path: str, content_type: str) -> str:
+        if content_type == "table":
+            return "table_evidence"
+        if content_type == "figure_caption":
+            return "figure_evidence"
+        if re.search(r"问题[一二三四五六七八九十\d]+", section_path):
+            return "clinical_question_answer"
+        canonical = self._canonical_section(section_path)
+        if canonical == "primary outcome":
+            return "primary_outcome"
+        if canonical == "secondary outcome":
+            return "secondary_outcome"
+        if canonical == "adverse events":
+            return "safety_or_adverse_event"
+        if canonical == "results" and re.search(r"abstract|摘要", section_path, re.I):
+            return "abstract_result"
+        if canonical != "other":
+            return f"{canonical.replace(' ', '_')}_evidence"
+        return "text_evidence"
 
     def _citation(
         self,

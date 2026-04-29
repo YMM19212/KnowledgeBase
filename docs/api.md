@@ -46,11 +46,24 @@ Deletes the document, chunks, and vectors.
 
 Returns chunk content and source metadata.
 
+`GET /documents/{document_id}/evidence-units`
+
+Returns medical evidence units derived from the document chunks.
+
+`GET /knowledge-bases/{kb_id}/evidence-units`
+
+Returns all evidence units in a knowledge base.
+
 ## Indexing
 
 `POST /knowledge-bases/{kb_id}/index/rebuild`
 
-Rebuilds vectors from stored chunks.
+Rebuilds evidence units and vectors from stored chunks.
+
+`POST /knowledge-bases/{kb_id}/evidence/rebuild`
+
+Rebuilds only the evidence-unit layer. If Kimi is configured, this endpoint runs
+LLM enrichment during rebuild; otherwise it uses rule extraction.
 
 ## Query
 
@@ -82,7 +95,36 @@ Response:
       "score": 0.82
     }
   ],
-  "retrieved_chunks": []
+  "retrieved_chunks": [],
+  "evidence_units": [
+    {
+      "evidence_type": "primary_outcome",
+      "canonical_section": "primary outcome",
+      "claim_text": "...",
+      "normalized_facts": {
+        "llm_enriched": false,
+        "values": ["0.11 ± 0.31"]
+      }
+    }
+  ],
+  "evidence_sufficiency": "sufficient"
+}
+```
+
+## Settings
+
+`GET /settings/embedding` and `PUT /settings/embedding` manage embedding backend,
+model, and Jina API key.
+
+`GET /settings/llm` and `PUT /settings/llm` manage Kimi/OpenAI-compatible evidence
+enrichment settings:
+
+```json
+{
+  "llm_provider": "moonshot",
+  "llm_base_url": "https://api.moonshot.ai/v1",
+  "llm_model": "kimi-k2.5",
+  "llm_api_key": "..."
 }
 ```
 
@@ -97,4 +139,3 @@ With body `{"knowledge_base_id":1}` the endpoint parses and ingests the sample. 
 `GET /stats`
 
 Returns counts of knowledge bases, documents, chunks, and SQLite fallback vectors.
-

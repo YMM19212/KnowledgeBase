@@ -8,11 +8,16 @@ from backend.app.core.config import get_settings
 class OpenAICompatibleLLM:
     """Minimal OpenAI-compatible chat completion client."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        api_base: str | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+    ) -> None:
         settings = get_settings()
-        self.api_base = settings.openai_api_base
-        self.api_key = settings.openai_api_key
-        self.model = settings.openai_model
+        self.api_base = api_base or settings.llm_base_url or settings.openai_api_base
+        self.api_key = api_key or settings.llm_api_key or settings.openai_api_key
+        self.model = model or settings.llm_model or settings.openai_model
 
     @property
     def configured(self) -> bool:

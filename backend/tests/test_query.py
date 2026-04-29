@@ -16,5 +16,7 @@ def test_query_returns_citations(db_session):
     )
 
     assert result["citations"]
+    assert result["evidence_units"]
+    assert result["evidence_sufficiency"] in {"sufficient", "partial"}
     assert "answer" in result
     assert result["citations"][0]["document_id"] == "demo-trial-001"

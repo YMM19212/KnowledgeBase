@@ -1,4 +1,4 @@
-import { FileUp, Play, RefreshCw, TerminalSquare, Upload } from "lucide-react";
+import { FileCheck2, FileUp, Play, RefreshCw, TerminalSquare, Upload } from "lucide-react";
 import { ChangeEvent, FormEvent, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -64,6 +64,16 @@ export function KnowledgeBaseDetailPage() {
     }
   }
 
+  async function handleRebuildEvidence() {
+    setBusy(true);
+    try {
+      await api.rebuildEvidence(id);
+      await kb.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleLocalMinerU(event: FormEvent) {
     event.preventDefault();
     if (!mineruFile) return;
@@ -119,6 +129,10 @@ export function KnowledgeBaseDetailPage() {
               <Button onClick={handleRebuild} disabled={busy}>
                 <RefreshCw className="h-4 w-4" />
                 重建索引
+              </Button>
+              <Button variant="outline" onClick={handleRebuildEvidence} disabled={busy}>
+                <FileCheck2 className="h-4 w-4" />
+                重建 Evidence
               </Button>
               <input ref={fileInputRef} type="file" className="hidden" onChange={handleUpload} />
             </div>

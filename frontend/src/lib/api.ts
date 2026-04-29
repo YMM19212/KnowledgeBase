@@ -2,7 +2,9 @@ import type {
   Chunk,
   DocumentRecord,
   EmbeddingSettings,
+  EvidenceUnit,
   KnowledgeBase,
+  LLMSettings,
   LocalMinerUIngestResponse,
   LocalMinerUStatus,
   PublicConfig,
@@ -49,6 +51,14 @@ export const api = {
   deleteDocument: (documentId: string) =>
     request<{ deleted: boolean }>(`/documents/${documentId}`, { method: "DELETE" }),
   listChunks: (documentId: string) => request<Chunk[]>(`/documents/${documentId}/chunks`),
+  listEvidenceUnits: (documentId: string) =>
+    request<EvidenceUnit[]>(`/documents/${documentId}/evidence-units`),
+  listKbEvidenceUnits: (knowledgeBaseId: number) =>
+    request<EvidenceUnit[]>(`/knowledge-bases/${knowledgeBaseId}/evidence-units`),
+  rebuildEvidence: (knowledgeBaseId: number) =>
+    request<{ evidence_units: number }>(`/knowledge-bases/${knowledgeBaseId}/evidence/rebuild`, {
+      method: "POST"
+    }),
   ingestMock: (knowledgeBaseId: number) =>
     request<{ document_id: string; ingested: boolean }>("/parse/mock", {
       method: "POST",
@@ -120,6 +130,17 @@ export const api = {
     jina_api_key?: string;
   }) =>
     request<EmbeddingSettings>("/settings/embedding", {
+      method: "PUT",
+      body: JSON.stringify(payload)
+    }),
+  llmSettings: () => request<LLMSettings>("/settings/llm"),
+  updateLLMSettings: (payload: {
+    llm_provider?: string;
+    llm_base_url?: string;
+    llm_model?: string;
+    llm_api_key?: string;
+  }) =>
+    request<LLMSettings>("/settings/llm", {
       method: "PUT",
       body: JSON.stringify(payload)
     })

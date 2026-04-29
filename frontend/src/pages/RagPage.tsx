@@ -1,4 +1,4 @@
-import { Bot, Filter, Link2, Send, ShieldAlert } from "lucide-react";
+import { Bot, FileCheck2, Filter, Link2, Send, ShieldAlert } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 
 import { Alert } from "../components/ui/alert";
@@ -164,8 +164,16 @@ export function RagPage() {
                 </div>
               </Alert>
             ) : (
-              <div className="whitespace-pre-wrap rounded-lg border border-border bg-muted/30 p-4 text-sm leading-7">
-                {result.answer}
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant={result.evidence_sufficiency === "sufficient" ? "success" : "warning"}>
+                    evidence {result.evidence_sufficiency ?? "unknown"}
+                  </Badge>
+                  <Badge variant="outline">{result.evidence_units?.length ?? 0} evidence units</Badge>
+                </div>
+                <div className="whitespace-pre-wrap rounded-lg border border-border bg-muted/30 p-4 text-sm leading-7">
+                  {result.answer}
+                </div>
               </div>
             )}
           </CardContent>
@@ -196,6 +204,35 @@ export function RagPage() {
                         {citation.document_id} · {citation.citation_text}
                       </div>
                       <p className="mt-3 text-sm leading-6">{citation.source_text}</p>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileCheck2 className="h-4 w-4" />
+                  Evidence Units
+                </CardTitle>
+                <CardDescription>入库阶段生成的医学证据单元，支持结构化检索和溯源。</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {(result.evidence_units ?? []).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">未返回 evidence units。可在知识库详情重建 evidence。</p>
+                ) : (
+                  result.evidence_units?.map((unit) => (
+                    <div key={unit.id} className="rounded-lg border border-border p-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="secondary">{unit.evidence_type}</Badge>
+                        <Badge variant="outline">{unit.canonical_section}</Badge>
+                        <Badge variant="success">confidence {unit.confidence.toFixed(2)}</Badge>
+                      </div>
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        {unit.document_id} · {unit.citation_text}
+                      </div>
+                      <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{unit.claim_text}</p>
                     </div>
                   ))
                 )}

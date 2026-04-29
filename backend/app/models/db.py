@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -70,6 +70,25 @@ class VectorEntry(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     metadata_json: Mapped[str] = mapped_column(Text, default="{}")
     embedding_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class EvidenceUnit(Base):
+    __tablename__ = "evidence_units"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    knowledge_base_id: Mapped[int] = mapped_column(Integer, index=True)
+    document_id: Mapped[str] = mapped_column(String(64), index=True)
+    chunk_id: Mapped[str] = mapped_column(String(128), index=True)
+    evidence_type: Mapped[str] = mapped_column(String(64), index=True)
+    canonical_section: Mapped[str] = mapped_column(String(64), default="other")
+    claim_text: Mapped[str] = mapped_column(Text, nullable=False)
+    normalized_facts_json: Mapped[str] = mapped_column(Text, default="{}")
+    source_text: Mapped[str] = mapped_column(Text, nullable=False)
+    page_start: Mapped[int | None] = mapped_column(Integer)
+    page_end: Mapped[int | None] = mapped_column(Integer)
+    citation_text: Mapped[str] = mapped_column(Text, default="")
+    confidence: Mapped[float] = mapped_column(Float, default=0.5)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
 class QueryLog(Base):

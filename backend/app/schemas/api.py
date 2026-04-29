@@ -62,6 +62,23 @@ class ChunkRead(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class EvidenceUnitRead(BaseModel):
+    id: int
+    knowledge_base_id: int
+    document_id: str
+    chunk_id: str
+    evidence_type: str
+    canonical_section: str
+    claim_text: str
+    normalized_facts: dict[str, Any] = Field(default_factory=dict)
+    source_text: str
+    page_start: int | None = None
+    page_end: int | None = None
+    citation_text: str
+    confidence: float
+    created_at: str | None = None
+
+
 class MockParseRequest(BaseModel):
     knowledge_base_id: int | None = None
 
@@ -88,6 +105,8 @@ class QueryResponse(BaseModel):
     answer: str
     citations: list[Citation]
     retrieved_chunks: list[dict[str, Any]]
+    evidence_units: list[dict[str, Any]] = Field(default_factory=list)
+    evidence_sufficiency: str = "sufficient"
 
 
 class EmbeddingSettingsRead(BaseModel):
@@ -102,3 +121,19 @@ class EmbeddingSettingsUpdate(BaseModel):
     embedding_backend: str | None = None
     embedding_model: str | None = None
     jina_api_key: str | None = None
+
+
+class LLMSettingsRead(BaseModel):
+    llm_provider: str
+    llm_base_url: str | None = None
+    llm_model: str | None = None
+    llm_source: str
+    llm_api_key_configured: bool = False
+    llm_api_key_masked: str | None = None
+
+
+class LLMSettingsUpdate(BaseModel):
+    llm_provider: str | None = None
+    llm_base_url: str | None = None
+    llm_model: str | None = None
+    llm_api_key: str | None = None

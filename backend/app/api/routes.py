@@ -8,7 +8,14 @@ from sqlalchemy.orm import Session
 
 from backend.app.api.deps import db_session
 from backend.app.core.config import get_settings
-from backend.app.models.db import ChunkRecord, DocumentRecord, KnowledgeBase, QueryLog, VectorEntry
+from backend.app.models.db import (
+    ChunkRecord,
+    DocumentRecord,
+    EvidenceUnit,
+    KnowledgeBase,
+    QueryLog,
+    VectorEntry,
+)
 from backend.app.parsers.local_mineru import LocalMinerUParserAdapter
 from backend.app.parsers.mock import MockParser
 from backend.app.rag.service import RAGService
@@ -17,8 +24,11 @@ from backend.app.schemas.api import (
     DocumentRead,
     EmbeddingSettingsRead,
     EmbeddingSettingsUpdate,
+    EvidenceUnitRead,
     KnowledgeBaseCreate,
     KnowledgeBaseRead,
+    LLMSettingsRead,
+    LLMSettingsUpdate,
     LocalMinerUIngestResponse,
     LocalMinerURunRead,
     LocalMinerUStatus,
@@ -26,6 +36,7 @@ from backend.app.schemas.api import (
     QueryRequest,
     QueryResponse,
 )
+from backend.app.services.evidence_service import EvidenceService, evidence_unit_to_dict
 from backend.app.services.indexing_service import IndexingService
 from backend.app.services.knowledge_base_service import (
     DocumentService,
@@ -36,6 +47,10 @@ from backend.app.services.settings_service import (
     EMBEDDING_BACKEND_KEY,
     EMBEDDING_MODEL_KEY,
     JINA_API_KEY_KEY,
+    LLM_API_KEY_KEY,
+    LLM_BASE_URL_KEY,
+    LLM_MODEL_KEY,
+    LLM_PROVIDER_KEY,
     AppSettingsService,
 )
 
@@ -226,6 +241,36 @@ def list_chunks(document_id: str, db: Session = Depends(db_session)):
     ]
 
 
+@router.get("/documents/{document_id}/evidence-units", response_model=list[EvidenceUnitRead])
+def list_document_evidence_units(document_id: str, db: Session = Depends(db_session)):
+    if not DocumentService(db).get(document_id):
+        raise HTTPException(status_code=404, detail="Document not found")
+    return [
+        EvidenceUnitRead(**evidence_unit_to_dict(unit))
+        for unit in EvidenceService(db).list_by_document(document_id)
+    ]
+
+
+@router.get(
+    "/knowledge-bases/{kb_id}/evidence-units", response_model=list[EvidenceUnitRead]
+)
+def list_kb_evidence_units(kb_id: int, db: Session = Depends(db_session)):
+    if not KnowledgeBaseService(db).get(kb_id):
+        raise HTTPException(status_code=404, detail="Knowledge base not found")
+    return [
+        EvidenceUnitRead(**evidence_unit_to_dict(unit))
+        for unit in EvidenceService(db).list_by_knowledge_base(kb_id)
+    ]
+
+
+@router.post("/knowledge-bases/{kb_id}/evidence/rebuild")
+def rebuild_evidence_units(kb_id: int, db: Session = Depends(db_session)):
+    if not KnowledgeBaseService(db).get(kb_id):
+        raise HTTPException(status_code=404, detail="Knowledge base not found")
+    count = EvidenceService(db).rebuild_knowledge_base(kb_id)
+    return {"evidence_units": count}
+
+
 @router.post("/knowledge-bases/{kb_id}/index/rebuild")
 def rebuild_index(kb_id: int, db: Session = Depends(db_session)):
     if not KnowledgeBaseService(db).get(kb_id):
@@ -277,6 +322,7 @@ def stats(db: Session = Depends(db_session)):
         "knowledge_bases": db.scalar(select(func.count(KnowledgeBase.id))) or 0,
         "documents": db.scalar(select(func.count(DocumentRecord.id))) or 0,
         "chunks": db.scalar(select(func.count(ChunkRecord.id))) or 0,
+        "evidence_units": db.scalar(select(func.count(EvidenceUnit.id))) or 0,
         "vectors_sqlite": db.scalar(select(func.count(VectorEntry.id))) or 0,
         "index_status": "ready",
         "query_count": query_count,
@@ -303,8 +349,15 @@ def public_config(db: Session = Depends(db_session)):
         "mineru_cli_command": settings.mineru_cli_command,
         "mineru_local_output_dir": str(settings.mineru_local_output_dir),
         "parser_mode": "remote-mineru" if settings.mineru_api_url else "mock/local-mineru",
-        "llm_provider": "openai-compatible" if settings.openai_api_key else "not configured",
-        "llm_configured": bool(settings.openai_api_key and settings.openai_model),
+        "llm_provider": app_settings["llm_provider"],
+        "llm_base_url": app_settings["llm_base_url"],
+        "llm_model": app_settings["llm_model"],
+        "llm_source": app_settings["llm_source"],
+        "llm_api_key_configured": app_settings["llm_api_key_configured"],
+        "llm_api_key_masked": app_settings["llm_api_key_masked"],
+        "llm_configured": bool(
+            app_settings["llm_api_key_configured"] and app_settings["llm_model"]
+        ),
     }
 
 
@@ -340,3 +393,31 @@ def update_embedding_settings(
         if api_key and not api_key.startswith("***"):
             service.set(JINA_API_KEY_KEY, api_key)
     return EmbeddingSettingsRead(**service.all_public_settings())
+
+
+@router.get("/settings/llm", response_model=LLMSettingsRead)
+def get_llm_settings(db: Session = Depends(db_session)):
+    return LLMSettingsRead(**AppSettingsService(db).all_public_settings())
+
+
+@router.put("/settings/llm", response_model=LLMSettingsRead)
+def update_llm_settings(payload: LLMSettingsUpdate, db: Session = Depends(db_session)):
+    service = AppSettingsService(db)
+    if payload.llm_provider is not None:
+        provider = payload.llm_provider.strip().lower()
+        if provider not in {"none", "moonshot", "kimi", "openai-compatible"}:
+            raise HTTPException(status_code=400, detail="Unsupported LLM provider")
+        service.set(LLM_PROVIDER_KEY, provider)
+    if payload.llm_base_url is not None:
+        base_url = payload.llm_base_url.strip()
+        if base_url:
+            service.set(LLM_BASE_URL_KEY, base_url)
+    if payload.llm_model is not None:
+        model = payload.llm_model.strip()
+        if model:
+            service.set(LLM_MODEL_KEY, model)
+    if payload.llm_api_key is not None:
+        api_key = payload.llm_api_key.strip()
+        if api_key and not api_key.startswith("***"):
+            service.set(LLM_API_KEY_KEY, api_key)
+    return LLMSettingsRead(**service.all_public_settings())

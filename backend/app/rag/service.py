@@ -8,6 +8,7 @@ from backend.app.core.config import get_settings
 from backend.app.models.db import ChunkRecord, DocumentRecord
 from backend.app.rag.embeddings import EmbeddingService, get_embedding_service
 from backend.app.rag.llm import OpenAICompatibleLLM
+from backend.app.services.evidence_service import EvidenceService, evidence_unit_to_dict
 from backend.app.services.settings_service import AppSettingsService
 from backend.app.vectorstores.factory import get_vector_store
 
@@ -36,17 +37,20 @@ class RAGService:
         effective_filters = self._infer_filters_from_query(knowledge_base_id, query)
         effective_filters.update(filters or {})
         query_vector = self.embeddings.embed_query(query)
-        search_k = max(top_k * 5, top_k)
+        search_k = max(top_k * 10, top_k)
         results = self.vector_store.similarity_search(
             knowledge_base_id, query_vector, search_k, effective_filters
         )
         enriched = self._rerank(query, [self._enrich_result(result) for result in results])[:top_k]
         usable = [item for item in enriched if item["score"] >= self.settings.rag_min_score]
+        evidence_units = self._evidence_for_results([item["chunk_id"] for item in usable])
         if not usable:
             return {
                 "answer": "证据不足，无法可靠回答。",
                 "citations": [],
                 "retrieved_chunks": enriched,
+                "evidence_units": [],
+                "evidence_sufficiency": "insufficient",
             }
         try:
             answer = (
@@ -72,6 +76,8 @@ class RAGService:
                 for item in usable
             ],
             "retrieved_chunks": enriched,
+            "evidence_units": evidence_units,
+            "evidence_sufficiency": self._evidence_sufficiency(evidence_units),
         }
 
     def _rerank(self, query: str, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -84,6 +90,7 @@ class RAGService:
             "table": ["table", "表格", "表 "],
             "figure": ["figure", "fig.", "图"],
             "abstract": ["abstract", "摘要"],
+            "question": ["问题一", "问题二", "问题三", "问题四", "问题五"],
         }
         requested = {
             section
@@ -96,6 +103,7 @@ class RAGService:
             score = float(adjusted["score"])
             section_path = str(adjusted.get("section_path") or "").lower()
             content_type = str(adjusted.get("content_type") or "").lower()
+            evidence_type = str(adjusted.get("metadata", {}).get("evidence_type") or "").lower()
             if "results" in requested and "result" in section_path:
                 score += 0.25
             if "methods" in requested and "method" in section_path:
@@ -105,9 +113,15 @@ class RAGService:
             if "discussion" in requested and "discussion" in section_path:
                 score += 0.2
             if "table" in requested and content_type == "table":
-                score += 0.2
+                score += 0.35
+            if "table" in requested and evidence_type == "table_evidence":
+                score += 0.15
             if "figure" in requested and content_type == "figure_caption":
-                score += 0.2
+                score += 0.35
+            if "figure" in requested and evidence_type == "figure_evidence":
+                score += 0.15
+            if "question" in requested and evidence_type == "clinical_question_answer":
+                score += 0.35
             if "abstract" in requested and adjusted.get("page_start") == 1:
                 abstract_sections = {
                     "objectives",
@@ -123,6 +137,22 @@ class RAGService:
             adjusted["score"] = min(score, 1.0)
             reranked.append(adjusted)
         return sorted(reranked, key=lambda item: item["score"], reverse=True)
+
+    def _evidence_for_results(self, chunk_ids: list[str]) -> list[dict[str, Any]]:
+        units = EvidenceService(self.db).find_for_chunks(chunk_ids)
+        by_chunk: dict[str, dict[str, Any]] = {}
+        for unit in units:
+            by_chunk.setdefault(unit.chunk_id, evidence_unit_to_dict(unit))
+        return [by_chunk[chunk_id] for chunk_id in chunk_ids if chunk_id in by_chunk]
+
+    def _evidence_sufficiency(self, units: list[dict[str, Any]]) -> str:
+        if not units:
+            return "insufficient"
+        statuses = [
+            str(unit.get("normalized_facts", {}).get("evidence_sufficiency", "partial"))
+            for unit in units
+        ]
+        return "sufficient" if any(status == "sufficient" for status in statuses) else "partial"
 
     def _infer_filters_from_query(
         self, knowledge_base_id: int, query: str

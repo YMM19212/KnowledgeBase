@@ -10,6 +10,8 @@
 
 - **本地 MinerU 接入**：支持通过 Web 页面上传 PDF，并调用本机 `mineru` CLI 的 pipeline 模式清洗文献。
 - **医疗语义切分**：按医学论文结构切分，而不是固定字数切分，重点保留 Primary outcome、Secondary outcome、Adverse events、Subgroup analysis、Limitations 等上下文。
+- **医学证据单元**：入库时生成 `evidence_units`，把摘要结果、主要/次要结局、表格、图注、中文临床问题等转为可检索、可引用的证据块。
+- **Kimi 入库增强**：支持 Kimi K2.5 / Moonshot OpenAI-compatible API，在入库或 evidence 重建时抽取 outcomes、groups、timepoints、values、units 等结构化事实。
 - **可溯源 RAG**：回答返回 citations、document_id、section_path、page、score 和 source text，证据不足时明确拒答。
 - **Jina Embeddings**：内置 Jina Embeddings 支持，默认模型为 `jina-embeddings-v5-text-small`，系统设置页可修改。
 - **工程化后端**：FastAPI + SQLite + Chroma/SQLite Vector Store + Pydantic Settings + pytest。
@@ -38,6 +40,10 @@ Metadata DB + Vector Store
 SQLite + Chroma 或 SQLite fallback
         │
         ▼
+Evidence Units
+规则抽取 + 可选 Kimi K2.5 入库增强
+        │
+        ▼
 RAG Query
 Jina / Sentence Transformers / Hash Embedding
         │
@@ -55,6 +61,7 @@ Answer + Citations + Retrieved Chunks
 - Mock MinerU 样例导入
 - 文档解析状态查看
 - chunk 列表查看
+- evidence unit 生成、查看与重建
 - 重建索引
 - RAG 查询
 - Embedding 设置动态修改
@@ -65,9 +72,9 @@ Answer + Citations + Retrieved Chunks
 
 - **Dashboard**：知识库数量、文档数量、chunk 数量、问答次数、最近导入文档、处理流程图。
 - **知识库管理**：创建、删除、进入详情。
-- **知识库详情**：文档列表、Mock 导入、PDF 上传、本地 MinerU 清洗、重建索引。
-- **文档详情**：文档元信息、章节结构、chunk 搜索、content_type 过滤。
-- **RAG 问答**：选择知识库、设置 top_k 和 metadata filter、展示 answer/citations/retrieved_chunks。
+- **知识库详情**：文档列表、Mock 导入、PDF 上传、本地 MinerU 清洗、重建索引、重建 Evidence。
+- **文档详情**：文档元信息、章节结构、chunk 搜索、content_type 过滤、evidence units。
+- **RAG 问答**：选择知识库、设置 top_k 和 metadata filter、展示 answer/citations/retrieved_chunks/evidence_units。
 - **MinerU 配置**：查看本地 MinerU CLI 状态、输出目录、Parser 模式。
 - **评测分析**：展示 Recall@K、Citation Coverage、Chunk Completeness 等 mock 指标。
 - **系统设置**：展示并修改 Embedding backend、model、Jina API key。
@@ -136,6 +143,25 @@ MEDRAG_JINA_API_KEY=your_jina_api_key
 - 修改 embedding backend/model 后，已入库文档需要重新向量化。
 - 重新向量化入口：`知识库详情 → 重建索引`。
 
+## 配置 Kimi Evidence Enrichment
+
+Kimi 只在入库或 evidence 重建时做结构化证据增强，不会在每次查询时实时调用。
+
+```bash
+MEDRAG_LLM_PROVIDER=moonshot
+MEDRAG_LLM_BASE_URL=https://api.moonshot.ai/v1
+MEDRAG_LLM_MODEL=kimi-k2.5
+MEDRAG_LLM_API_KEY=your_kimi_api_key
+```
+
+也可以在前端修改：
+
+```text
+系统设置 → Kimi Evidence Enrichment 设置
+```
+
+如果未配置 Kimi，系统仍会使用规则抽取生成 evidence units，并记录 `llm_enriched=false`。
+
 ## 使用本地 MinerU Pipeline 入库
 
 如果本机已经安装 MinerU，并且可以运行：
@@ -169,6 +195,7 @@ mineru -p <input_path> -o <output_path> -b pipeline
   -> 回退读取其他 JSON 或 Markdown
   -> 标准化为 ParsedDocument
   -> 医疗语义切分
+  -> Evidence Unit 生成 / 可选 Kimi 增强
   -> embedding
   -> 写入向量库
 ```
@@ -210,7 +237,7 @@ python scripts/ingest_mineru_outputs.py \
 make ingest-competition
 ```
 
-脚本会优先读取每篇文献的 `*_content_list.json`，自动标准化、语义切分、向量化并写入知识库。
+脚本会优先读取每篇文献的 `*_content_list.json`，自动标准化、语义切分、生成 evidence units、向量化并写入知识库。
 
 ## 导入样例数据
 
@@ -252,6 +279,8 @@ curl -X POST http://localhost:8000/api/v1/query \
 - `answer`：基于检索证据的回答；未配置 LLM 时为抽取式回答。
 - `citations`：引用来源，包含 chunk、document、section、page、score、source_text。
 - `retrieved_chunks`：完整检索片段，用于调试召回与排序。
+- `evidence_units`：入库阶段生成的医学证据单元，包含 evidence_type、claim_text、normalized_facts、confidence。
+- `evidence_sufficiency`：当前检索证据是否充分。
 
 ## 核心 API
 

@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     openai_api_base: str | None = None
     openai_api_key: str | None = None
     openai_model: str | None = None
+    llm_provider: str = "none"
+    llm_base_url: str | None = None
+    llm_model: str | None = None
+    llm_api_key: str | None = None
 
     rag_min_score: float = Field(default=0.05, ge=0.0, le=1.0)
     default_top_k: int = Field(default=5, ge=1, le=50)

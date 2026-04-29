@@ -10,6 +10,7 @@ from backend.app.parsers.base import BaseParser
 from backend.app.parsers.mock import MockParser
 from backend.app.rag.embeddings import EmbeddingService, get_embedding_service
 from backend.app.schemas.parsed import Chunk, ParsedDocument
+from backend.app.services.evidence_service import EvidenceService
 from backend.app.services.settings_service import AppSettingsService
 from backend.app.vectorstores.base import VectorDocument
 from backend.app.vectorstores.factory import get_vector_store
@@ -44,10 +45,12 @@ class IndexingService:
         chunks = self.chunker.chunk(parsed)
         record = self._upsert_document(knowledge_base_id, parsed)
         self._replace_chunks(knowledge_base_id, parsed.document_id, chunks)
-        self._index_chunks(knowledge_base_id, chunks)
+        EvidenceService(self.db).replace_document_evidence(knowledge_base_id, parsed.document_id)
+        self._index_document_chunks(knowledge_base_id, parsed.document_id)
         return record
 
     def rebuild_index(self, knowledge_base_id: int) -> int:
+        EvidenceService(self.db).rebuild_knowledge_base(knowledge_base_id)
         chunks = list(
             self.db.scalars(
                 select(ChunkRecord)
@@ -65,7 +68,13 @@ class IndexingService:
                     chunk_id=chunk.chunk_id,
                     content=chunk.content,
                     embedding=embedding,
-                    metadata=json.loads(chunk.metadata_json or "{}"),
+                    metadata={
+                        **json.loads(chunk.metadata_json or "{}"),
+                        "section_path": chunk.section_path,
+                        "page_start": chunk.page_start,
+                        "page_end": chunk.page_end,
+                        "content_type": chunk.content_type,
+                    },
                 )
                 for chunk, embedding in zip(chunks, vectors, strict=True)
             ]
@@ -119,14 +128,25 @@ class IndexingService:
             )
         self.db.commit()
 
-    def _index_chunks(self, knowledge_base_id: int, chunks: list[Chunk]) -> None:
+    def _index_document_chunks(self, knowledge_base_id: int, document_id: str) -> None:
+        chunks = list(
+            self.db.scalars(
+                select(ChunkRecord)
+                .where(
+                    ChunkRecord.knowledge_base_id == knowledge_base_id,
+                    ChunkRecord.document_id == document_id,
+                )
+                .order_by(ChunkRecord.id)
+            )
+        )
+        self._index_chunks(knowledge_base_id, chunks)
+
+    def _index_chunks(self, knowledge_base_id: int, chunks: list[ChunkRecord]) -> None:
         embeddings = self.embeddings.embed_texts([chunk.content for chunk in chunks])
         items = []
         for chunk, embedding in zip(chunks, embeddings, strict=True):
             metadata = {
-                **chunk.metadata,
-                **chunk.source_span,
-                "citation_text": chunk.citation_text,
+                **json.loads(chunk.metadata_json or "{}"),
                 "section_path": chunk.section_path,
                 "page_start": chunk.page_start,
                 "page_end": chunk.page_end,
