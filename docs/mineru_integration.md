@@ -1,0 +1,72 @@
+# MinerU Integration
+
+The project is MinerU-ready but does not require MinerU in the current mock phase.
+
+## Current Mock Phase
+
+- `MockParser` reads `examples/sample_mineru_output.json`.
+- API ingestion and CLI scripts use this parser by default.
+- `MinerUParserAdapter` returns mock data when `MEDRAG_MINERU_API_URL` is empty.
+
+## Local MinerU Pipeline
+
+When MinerU is installed locally, the project can run:
+
+```bash
+mineru -p <input_path> -o <output_path> -b pipeline -m auto -l ch -f True -t True
+```
+
+Use the API endpoint:
+
+`POST /api/v1/knowledge-bases/{kb_id}/documents/mineru-local`
+
+Multipart fields:
+
+- `file`: PDF/image file
+- `method`: `auto`, `txt`, or `ocr`
+- `lang`: MinerU OCR language code
+- `formula`: boolean
+- `table`: boolean
+
+The local adapter first looks for `content_list.json`, then other JSON files, then Markdown. It maps the artifact into `ParsedDocument`, and the existing chunking/indexing/RAG pipeline handles the rest.
+
+## Functions to Implement
+
+`MinerUParserAdapter.submit_parse_task(pdf_path)`
+
+- Upload PDF to the MinerU service.
+- Return a stable `task_id`.
+- Attach request metadata such as document language, OCR mode, and table extraction options if MinerU supports them.
+
+`MinerUParserAdapter.get_parse_result(task_id)`
+
+- Poll or fetch the parse result.
+- Handle pending, failed, and completed states.
+- Return the raw MinerU JSON payload.
+
+`MinerUParserAdapter.parse_pdf(pdf_path)`
+
+- Submit task.
+- Wait for completion or use callback state.
+- Fetch result.
+- Call `normalize_mineru_json()`.
+
+`MinerUParserAdapter.normalize_mineru_json(raw_mineru_json)`
+
+- Map MinerU blocks into `ParsedDocument`.
+- Preserve page numbers, section hierarchy, tables, figure captions, bounding boxes, and raw JSON.
+- Keep table markdown or structured table cells when available.
+
+## Contract
+
+Downstream code consumes only `ParsedDocument`. Keep that schema stable to avoid changes in chunking, indexing, retrieval, and API responses.
+
+## Recommended MinerU Metadata
+
+- `page_number`
+- `bounding_box`
+- layout block type
+- section title and heading level
+- table id, caption, markdown or cells
+- figure id and caption
+- references and cross-reference anchors

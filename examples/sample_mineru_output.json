@@ -1,0 +1,224 @@
+{
+  "document_id": "demo-trial-001",
+  "title": "A Randomized Trial of CardioRelief in Adults with Stable Heart Failure",
+  "authors": ["Lin Zhang", "Maria Gomez", "Wei Chen"],
+  "abstract": "Background: Stable heart failure remains associated with repeated hospitalization. Methods: We conducted a randomized, double-blind trial comparing CardioRelief plus standard care with placebo plus standard care. Results: The primary outcome, change in 6-minute walk distance at 24 weeks, improved by 38 meters in the CardioRelief group versus 14 meters in the placebo group. Conclusions: CardioRelief improved functional capacity with similar rates of serious adverse events.",
+  "page_number": 9,
+  "source_file": "cardiorelief_trial.pdf",
+  "sections": [
+    {
+      "title": "Introduction",
+      "level": 1,
+      "page_start": 1,
+      "page_end": 2,
+      "paragraphs": [
+        {
+          "page_number": 1,
+          "text": "Heart failure with reduced exercise tolerance is a major cause of morbidity. Prior small studies suggested that CardioRelief may improve mitochondrial efficiency and peripheral oxygen utilization."
+        },
+        {
+          "page_number": 2,
+          "text": "We designed this trial to evaluate whether CardioRelief improves functional capacity and patient-reported symptoms in adults receiving guideline-directed medical therapy."
+        }
+      ]
+    },
+    {
+      "title": "Methods",
+      "level": 1,
+      "page_start": 2,
+      "page_end": 4,
+      "paragraphs": [
+        {
+          "page_number": 2,
+          "text": "This was a multicenter, randomized, double-blind, placebo-controlled clinical trial conducted at 18 hospitals. Participants were assigned in a 1:1 ratio using a concealed web-based randomization system."
+        }
+      ],
+      "subsections": [
+        {
+          "title": "Participants",
+          "level": 2,
+          "page_start": 2,
+          "page_end": 3,
+          "paragraphs": [
+            {
+              "page_number": 2,
+              "text": "Eligible participants were 40 to 85 years of age, had stable heart failure for at least 3 months, left ventricular ejection fraction of 45% or lower, and a baseline 6-minute walk distance between 150 and 450 meters."
+            },
+            {
+              "page_number": 3,
+              "text": "Key exclusion criteria were hospitalization within 30 days, estimated glomerular filtration rate below 30 ml per minute per 1.73 m2, or planned revascularization."
+            }
+          ],
+          "tables": [
+            {
+              "table_id": "T1",
+              "title": "Table 1. Baseline characteristics",
+              "caption": "Baseline demographics and clinical characteristics were balanced between groups.",
+              "page_number": 3,
+              "markdown": "| Characteristic | CardioRelief (n=124) | Placebo (n=123) |\n|---|---:|---:|\n| Age, mean years | 66.2 | 65.8 |\n| Female sex, no. (%) | 48 (38.7) | 46 (37.4) |\n| LVEF, mean % | 35.1 | 35.4 |\n| 6-minute walk distance, m | 312 | 315 |"
+            }
+          ]
+        },
+        {
+          "title": "Intervention",
+          "level": 2,
+          "page_start": 3,
+          "page_end": 4,
+          "paragraphs": [
+            {
+              "page_number": 3,
+              "text": "Participants received CardioRelief 50 mg twice daily or matching placebo for 24 weeks, in addition to standard heart failure therapy."
+            }
+          ]
+        },
+        {
+          "title": "Outcomes",
+          "level": 2,
+          "page_start": 4,
+          "page_end": 4,
+          "subsections": [
+            {
+              "title": "Primary outcome",
+              "level": 3,
+              "page_start": 4,
+              "page_end": 4,
+              "paragraphs": [
+                {
+                  "page_number": 4,
+                  "text": "The primary outcome was the change from baseline in 6-minute walk distance at week 24. The prespecified minimal clinically important difference was 25 meters."
+                }
+              ]
+            },
+            {
+              "title": "Secondary outcome",
+              "level": 3,
+              "page_start": 4,
+              "page_end": 4,
+              "paragraphs": [
+                {
+                  "page_number": 4,
+                  "text": "Secondary outcomes included Kansas City Cardiomyopathy Questionnaire overall summary score, NT-proBNP concentration, all-cause hospitalization, and treatment discontinuation."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Results",
+      "level": 1,
+      "page_start": 5,
+      "page_end": 7,
+      "subsections": [
+        {
+          "title": "Primary outcome",
+          "level": 2,
+          "page_start": 5,
+          "page_end": 6,
+          "paragraphs": [
+            {
+              "page_number": 5,
+              "text": "At week 24, the mean 6-minute walk distance increased by 38 meters in the CardioRelief group and by 14 meters in the placebo group. The adjusted between-group difference was 24 meters (95% CI, 10 to 38; P=0.001)."
+            }
+          ],
+          "figures": [
+            {
+              "figure_id": "F1",
+              "caption": "Figure 1. Change in 6-minute walk distance over 24 weeks. The CardioRelief group separated from placebo by week 8 and maintained benefit through week 24.",
+              "page_number": 6
+            }
+          ]
+        },
+        {
+          "title": "Secondary outcome",
+          "level": 2,
+          "page_start": 6,
+          "page_end": 7,
+          "paragraphs": [
+            {
+              "page_number": 6,
+              "text": "The Kansas City Cardiomyopathy Questionnaire score improved by 9.4 points with CardioRelief and 4.1 points with placebo. NT-proBNP declined by 18% in the CardioRelief group and by 7% in the placebo group."
+            }
+          ],
+          "tables": [
+            {
+              "table_id": "T2",
+              "title": "Table 2. Outcomes at 24 weeks",
+              "caption": "Primary and secondary endpoints favored CardioRelief for functional and symptom outcomes.",
+              "page_number": 7,
+              "markdown": "| Outcome | CardioRelief | Placebo | Difference |\n|---|---:|---:|---:|\n| 6-minute walk distance change, m | 38 | 14 | 24 |\n| KCCQ score change | 9.4 | 4.1 | 5.3 |\n| NT-proBNP change | -18% | -7% | -11% |"
+            }
+          ]
+        },
+        {
+          "title": "Subgroup analysis",
+          "level": 2,
+          "page_start": 7,
+          "page_end": 7,
+          "paragraphs": [
+            {
+              "page_number": 7,
+              "text": "The treatment effect on 6-minute walk distance was consistent across age, sex, baseline ejection fraction, and diabetes status subgroups, with no significant interaction observed."
+            }
+          ]
+        },
+        {
+          "title": "Adverse events",
+          "level": 2,
+          "page_start": 7,
+          "page_end": 7,
+          "paragraphs": [
+            {
+              "page_number": 7,
+              "text": "Serious adverse events occurred in 11 participants (8.9%) receiving CardioRelief and 13 participants (10.6%) receiving placebo. Mild nausea was more frequent with CardioRelief, occurring in 14.5% versus 7.3%."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Discussion",
+      "level": 1,
+      "page_start": 8,
+      "page_end": 9,
+      "paragraphs": [
+        {
+          "page_number": 8,
+          "text": "In adults with stable heart failure, CardioRelief improved functional capacity at 24 weeks. The magnitude of benefit was close to the prespecified clinically important threshold and was supported by symptom score improvement."
+        }
+      ],
+      "subsections": [
+        {
+          "title": "Limitations",
+          "level": 2,
+          "page_start": 8,
+          "page_end": 9,
+          "paragraphs": [
+            {
+              "page_number": 8,
+              "text": "The trial was not powered to detect differences in mortality or rare safety events. Follow-up was limited to 24 weeks."
+            }
+          ]
+        },
+        {
+          "title": "Conclusion",
+          "level": 2,
+          "page_start": 9,
+          "page_end": 9,
+          "paragraphs": [
+            {
+              "page_number": 9,
+              "text": "CardioRelief added to standard care improved 6-minute walk distance and symptom scores compared with placebo, without an excess of serious adverse events."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "references": [
+    "Smith J et al. Heart failure functional assessment. J Clin Cardiol. 2022.",
+    "Wang Y et al. Exercise capacity endpoints in heart failure trials. Eur Heart J. 2021."
+  ]
+}
+

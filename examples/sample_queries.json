@@ -1,0 +1,15 @@
+[
+  {
+    "query": "What was the primary outcome and result at week 24?",
+    "expected_sections": ["Results > Primary outcome"]
+  },
+  {
+    "query": "Were serious adverse events increased with CardioRelief?",
+    "expected_sections": ["Results > Adverse events"]
+  },
+  {
+    "query": "What baseline characteristics were reported?",
+    "expected_sections": ["Methods > Participants"]
+  }
+]
+

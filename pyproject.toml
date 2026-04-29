@@ -1,0 +1,50 @@
+[project]
+name = "mineru-medical-rag"
+version = "0.1.0"
+description = "A MinerU-ready medical literature RAG knowledge base with semantic chunking and traceable retrieval."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "MinerU Medical RAG Contributors" }]
+dependencies = [
+  "fastapi>=0.110.0",
+  "uvicorn[standard]>=0.27.0",
+  "pydantic>=2.6.0",
+  "pydantic-settings>=2.2.0",
+  "sqlalchemy>=2.0.0",
+  "python-multipart>=0.0.9",
+  "httpx>=0.26.0",
+  "numpy>=1.24.0",
+]
+
+[project.optional-dependencies]
+rag = [
+  "chromadb>=0.4.24",
+  "sentence-transformers>=2.6.0",
+]
+dev = [
+  "pytest>=8.0.0",
+  "pytest-cov>=4.1.0",
+  "ruff>=0.3.0",
+  "black>=24.0.0",
+]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N"]
+ignore = ["B008"]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.setuptools.packages.find]
+include = ["backend*"]
