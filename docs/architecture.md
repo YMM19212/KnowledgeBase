@@ -25,6 +25,7 @@ The project turns parsed medical literature into a traceable RAG knowledge base.
 
 5. RAG layer
    - Embeddings are provided by sentence-transformers when available.
+   - Jina Embeddings can be used for multilingual retrieval through the runtime settings page.
    - Hash embeddings allow offline deterministic tests and demos.
    - Query responses always include citations and source text.
 
@@ -45,4 +46,3 @@ PDF or sample JSON
 ## Deployment Shape
 
 The default deployment is a single FastAPI service with local SQLite and Chroma persistence. The same boundaries allow future deployment with a remote MinerU parser, external vector database, and managed LLM API.
-

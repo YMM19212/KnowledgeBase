@@ -1,6 +1,7 @@
 import type {
   Chunk,
   DocumentRecord,
+  EmbeddingSettings,
   KnowledgeBase,
   LocalMinerUIngestResponse,
   LocalMinerUStatus,
@@ -111,5 +112,15 @@ export const api = {
       body: JSON.stringify({ ...payload, filters: payload.filters ?? {} })
     }),
   stats: () => request<Stats>("/stats"),
-  config: () => request<PublicConfig>("/config")
+  config: () => request<PublicConfig>("/config"),
+  embeddingSettings: () => request<EmbeddingSettings>("/settings/embedding"),
+  updateEmbeddingSettings: (payload: {
+    embedding_backend?: string;
+    embedding_model?: string;
+    jina_api_key?: string;
+  }) =>
+    request<EmbeddingSettings>("/settings/embedding", {
+      method: "PUT",
+      body: JSON.stringify(payload)
+    })
 };

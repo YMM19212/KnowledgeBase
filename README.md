@@ -74,6 +74,19 @@ The console provides Dashboard, KB management, document/chunk inspection,
 traceable RAG QA, MinerU integration settings, evaluation analysis, and system
 settings pages.
 
+## Jina Embeddings
+
+Jina embeddings are supported through environment variables or the frontend
+System Settings page:
+
+```bash
+MEDRAG_EMBEDDING_BACKEND=jina
+MEDRAG_EMBEDDING_MODEL=jina-embeddings-v5-text-small
+MEDRAG_JINA_API_KEY=your_jina_api_key
+```
+
+After changing embedding settings, rebuild the target knowledge base index.
+
 ## API Usage
 
 Create a KB:

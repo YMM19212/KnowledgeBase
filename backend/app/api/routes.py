@@ -15,6 +15,8 @@ from backend.app.rag.service import RAGService
 from backend.app.schemas.api import (
     ChunkRead,
     DocumentRead,
+    EmbeddingSettingsRead,
+    EmbeddingSettingsUpdate,
     KnowledgeBaseCreate,
     KnowledgeBaseRead,
     LocalMinerUIngestResponse,
@@ -29,6 +31,12 @@ from backend.app.services.knowledge_base_service import (
     DocumentService,
     KnowledgeBaseService,
     document_to_dict,
+)
+from backend.app.services.settings_service import (
+    EMBEDDING_BACKEND_KEY,
+    EMBEDDING_MODEL_KEY,
+    JINA_API_KEY_KEY,
+    AppSettingsService,
 )
 
 router = APIRouter()
@@ -278,14 +286,18 @@ def stats(db: Session = Depends(db_session)):
 
 
 @router.get("/config")
-def public_config():
+def public_config(db: Session = Depends(db_session)):
     settings = get_settings()
+    app_settings = AppSettingsService(db).all_public_settings()
     return {
         "app_name": settings.app_name,
         "env": settings.env,
         "api_prefix": settings.api_prefix,
-        "embedding_backend": settings.embedding_backend,
-        "embedding_model": settings.embedding_model,
+        "embedding_backend": app_settings["embedding_backend"],
+        "embedding_model": app_settings["embedding_model"],
+        "embedding_source": app_settings["embedding_source"],
+        "jina_api_key_configured": app_settings["jina_api_key_configured"],
+        "jina_api_key_masked": app_settings["jina_api_key_masked"],
         "vector_store": settings.vector_store,
         "mineru_api_url": settings.mineru_api_url,
         "mineru_cli_command": settings.mineru_cli_command,
@@ -294,3 +306,37 @@ def public_config():
         "llm_provider": "openai-compatible" if settings.openai_api_key else "not configured",
         "llm_configured": bool(settings.openai_api_key and settings.openai_model),
     }
+
+
+@router.get("/settings/embedding", response_model=EmbeddingSettingsRead)
+def get_embedding_settings(db: Session = Depends(db_session)):
+    return EmbeddingSettingsRead(**AppSettingsService(db).all_public_settings())
+
+
+@router.put("/settings/embedding", response_model=EmbeddingSettingsRead)
+def update_embedding_settings(
+    payload: EmbeddingSettingsUpdate,
+    db: Session = Depends(db_session),
+):
+    service = AppSettingsService(db)
+    if payload.embedding_backend is not None:
+        backend = payload.embedding_backend.strip()
+        supported_backends = {
+            "hash",
+            "jina",
+            "auto",
+            "sentence-transformers",
+            "sentence_transformers",
+        }
+        if backend not in supported_backends:
+            raise HTTPException(status_code=400, detail="Unsupported embedding backend")
+        service.set(EMBEDDING_BACKEND_KEY, backend)
+    if payload.embedding_model is not None:
+        model = payload.embedding_model.strip()
+        if model:
+            service.set(EMBEDDING_MODEL_KEY, model)
+    if payload.jina_api_key is not None:
+        api_key = payload.jina_api_key.strip()
+        if api_key and not api_key.startswith("***"):
+            service.set(JINA_API_KEY_KEY, api_key)
+    return EmbeddingSettingsRead(**service.all_public_settings())

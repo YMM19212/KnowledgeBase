@@ -3,10 +3,13 @@ import logging
 import math
 import re
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
+import httpx
 import numpy as np
 
 from backend.app.core.config import get_settings
+from backend.app.services.settings_service import EffectiveEmbeddingSettings
 
 logger = logging.getLogger(__name__)
 
@@ -54,15 +57,68 @@ class SentenceTransformerEmbeddingService(EmbeddingService):
         return vectors.astype(float).tolist()
 
 
-def get_embedding_service() -> EmbeddingService:
+class JinaEmbeddingService(EmbeddingService):
+    """Jina AI embedding client for multilingual retrieval."""
+
+    def __init__(self, api_key: str, model: str = "jina-embeddings-v5-text-small") -> None:
+        if not api_key:
+            raise ValueError("Jina API key is required for Jina embeddings.")
+        self.api_key = api_key
+        self.model = model
+
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        return self._embed(texts, task="retrieval.passage")
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._embed([text], task="retrieval.query")[0]
+
+    def _embed(self, texts: list[str], task: str) -> list[list[float]]:
+        if not texts:
+            return []
+        response = httpx.post(
+            "https://api.jina.ai/v1/embeddings",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+            },
+            json={
+                "model": self.model,
+                "task": task,
+                "normalized": True,
+                "input": texts,
+            },
+            timeout=120,
+        )
+        response.raise_for_status()
+        data = response.json().get("data", [])
+        return [item["embedding"] for item in data]
+
+
+@dataclass(frozen=True)
+class EmbeddingFactoryConfig:
+    backend: str
+    model: str
+    jina_api_key: str | None = None
+
+
+def get_embedding_service(
+    runtime_settings: EffectiveEmbeddingSettings | EmbeddingFactoryConfig | None = None,
+) -> EmbeddingService:
     settings = get_settings()
-    backend = settings.embedding_backend.lower()
+    backend = (runtime_settings.backend if runtime_settings else settings.embedding_backend).lower()
+    model = runtime_settings.model if runtime_settings else settings.embedding_model
+    jina_api_key = runtime_settings.jina_api_key if runtime_settings else settings.jina_api_key
     if backend == "hash":
         return HashEmbeddingService(settings.embedding_dimension)
+    if backend == "jina":
+        return JinaEmbeddingService(
+            api_key=jina_api_key or "",
+            model=model or settings.jina_embedding_model,
+        )
     if backend in {"sentence-transformers", "sentence_transformers"}:
-        return SentenceTransformerEmbeddingService(settings.embedding_model)
+        return SentenceTransformerEmbeddingService(model)
     try:
-        return SentenceTransformerEmbeddingService(settings.embedding_model)
+        return SentenceTransformerEmbeddingService(model)
     except Exception as exc:  # pragma: no cover - depends on optional runtime packages
         logger.warning("Falling back to hash embeddings: %s", exc)
         return HashEmbeddingService(settings.embedding_dimension)

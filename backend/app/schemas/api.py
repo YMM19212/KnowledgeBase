@@ -88,3 +88,17 @@ class QueryResponse(BaseModel):
     answer: str
     citations: list[Citation]
     retrieved_chunks: list[dict[str, Any]]
+
+
+class EmbeddingSettingsRead(BaseModel):
+    embedding_backend: str
+    embedding_model: str
+    embedding_source: str
+    jina_api_key_configured: bool = False
+    jina_api_key_masked: str | None = None
+
+
+class EmbeddingSettingsUpdate(BaseModel):
+    embedding_backend: str | None = None
+    embedding_model: str | None = None
+    jina_api_key: str | None = None

@@ -10,6 +10,7 @@ from backend.app.parsers.base import BaseParser
 from backend.app.parsers.mock import MockParser
 from backend.app.rag.embeddings import EmbeddingService, get_embedding_service
 from backend.app.schemas.parsed import Chunk, ParsedDocument
+from backend.app.services.settings_service import AppSettingsService
 from backend.app.vectorstores.base import VectorDocument
 from backend.app.vectorstores.factory import get_vector_store
 
@@ -27,7 +28,8 @@ class IndexingService:
         self.db = db
         self.parser = parser or MockParser()
         self.chunker = chunker or MedicalSemanticChunker()
-        self.embeddings = embeddings or get_embedding_service()
+        runtime_embedding = AppSettingsService(db).effective_embedding_settings()
+        self.embeddings = embeddings or get_embedding_service(runtime_embedding)
         self.vector_store = get_vector_store(db)
 
     def ingest_pdf(

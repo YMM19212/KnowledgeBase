@@ -8,6 +8,7 @@ from backend.app.core.config import get_settings
 from backend.app.models.db import ChunkRecord
 from backend.app.rag.embeddings import EmbeddingService, get_embedding_service
 from backend.app.rag.llm import OpenAICompatibleLLM
+from backend.app.services.settings_service import AppSettingsService
 from backend.app.vectorstores.factory import get_vector_store
 
 
@@ -19,7 +20,8 @@ class RAGService:
         llm: OpenAICompatibleLLM | None = None,
     ) -> None:
         self.db = db
-        self.embeddings = embeddings or get_embedding_service()
+        runtime_embedding = AppSettingsService(db).effective_embedding_settings()
+        self.embeddings = embeddings or get_embedding_service(runtime_embedding)
         self.vector_store = get_vector_store(db)
         self.llm = llm or OpenAICompatibleLLM()
         self.settings = get_settings()

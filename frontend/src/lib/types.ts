@@ -100,6 +100,9 @@ export type PublicConfig = {
   api_prefix: string;
   embedding_backend: string;
   embedding_model: string;
+  embedding_source?: string;
+  jina_api_key_configured?: boolean;
+  jina_api_key_masked?: string | null;
   vector_store: string;
   mineru_api_url?: string | null;
   mineru_cli_command?: string;
@@ -107,4 +110,12 @@ export type PublicConfig = {
   parser_mode: "mock" | "mineru" | string;
   llm_provider: string;
   llm_configured: boolean;
+};
+
+export type EmbeddingSettings = {
+  embedding_backend: string;
+  embedding_model: string;
+  embedding_source: string;
+  jina_api_key_configured: boolean;
+  jina_api_key_masked?: string | null;
 };

@@ -58,6 +58,19 @@ npm run dev
 前端包含 Dashboard、知识库管理、文档/Chunk 查看、可溯源 RAG 问答、MinerU 接入配置、
 评测分析和系统设置等页面。
 
+## Jina Embedding 配置
+
+项目支持 Jina Embeddings。默认模型建议：
+
+```bash
+MEDRAG_EMBEDDING_BACKEND=jina
+MEDRAG_EMBEDDING_MODEL=jina-embeddings-v5-text-small
+MEDRAG_JINA_API_KEY=你的 Jina API Key
+```
+
+也可以在前端“系统设置 → Embedding 设置”中修改 backend、model 和 API key。
+修改 embedding 模型后，需要到知识库详情页点击“重建索引”，使已入库文档使用新向量。
+
 ## 导入样例数据
 
 ```bash

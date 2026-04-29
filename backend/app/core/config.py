@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     embedding_backend: str = "auto"
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     embedding_dimension: int = 384
+    jina_api_key: str | None = None
+    jina_embedding_model: str = "jina-embeddings-v5-text-small"
 
     mock_mineru_json: Path = Path("./examples/sample_mineru_output.json")
     mineru_api_url: str | None = None
