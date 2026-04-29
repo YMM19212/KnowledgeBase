@@ -22,6 +22,9 @@ format:
 ingest-sample:
 	python scripts/ingest_sample.py --kb-name "Demo Medical KB"
 
+ingest-competition:
+	python scripts/ingest_mineru_outputs.py --input-dir CompetitionMinerU --kb-name "Competition Medical Literature KB"
+
 rebuild-index:
 	python scripts/rebuild_index.py --kb-id 1
 
@@ -30,4 +33,3 @@ query:
 
 clean:
 	rm -rf .pytest_cache .ruff_cache **/__pycache__
-

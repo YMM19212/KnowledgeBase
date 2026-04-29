@@ -30,6 +30,16 @@ Multipart fields:
 
 The local adapter first looks for `content_list.json`, then other JSON files, then Markdown. It maps the artifact into `ParsedDocument`, and the existing chunking/indexing/RAG pipeline handles the rest.
 
+## Pre-cleaned MinerU Artifacts
+
+When MinerU outputs are already available, import them directly without running the CLI:
+
+```bash
+python scripts/ingest_mineru_outputs.py --input-dir CompetitionMinerU
+```
+
+The script scans for `*_content_list.json` under each `auto/` directory and calls `LocalMinerUParserAdapter.parse_output_dir()`.
+
 ## Functions to Implement
 
 `MinerUParserAdapter.submit_parse_task(pdf_path)`

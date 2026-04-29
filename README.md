@@ -181,6 +181,37 @@ MEDRAG_MINERU_LOCAL_OUTPUT_DIR=./data/mineru_outputs
 MEDRAG_MINERU_CLI_TIMEOUT_SECONDS=1800
 ```
 
+## 使用已清洗好的 MinerU 目录入库
+
+如果已经有 MinerU 清洗产物，例如本项目的 `CompetitionMinerU/`：
+
+```text
+CompetitionMinerU/
+  article_name/
+    auto/
+      *_content_list.json
+      *.md
+      *_middle.json
+      *_origin.pdf
+      images/
+```
+
+可以直接导入，不会再次运行 MinerU：
+
+```bash
+python scripts/ingest_mineru_outputs.py \
+  --input-dir CompetitionMinerU \
+  --kb-name "Competition Medical Literature KB"
+```
+
+或使用 Makefile：
+
+```bash
+make ingest-competition
+```
+
+脚本会优先读取每篇文献的 `*_content_list.json`，自动标准化、语义切分、向量化并写入知识库。
+
 ## 导入样例数据
 
 如果暂时没有 PDF，可先导入样例临床试验文献：
@@ -317,6 +348,7 @@ npm run build
 
 - Mock MinerU 样例导入
 - 本地 MinerU CLI Pipeline 入库
+- 已清洗 MinerU 目录批量导入
 - Jina Embedding
 - SQLite/Chroma 向量索引
 - 可溯源 RAG 问答
@@ -334,4 +366,3 @@ npm run build
 ## License
 
 MIT License。
-

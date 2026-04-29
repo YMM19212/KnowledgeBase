@@ -1,0 +1,37 @@
+[
+  {
+    "id": "competition-q1",
+    "query": "请根据输入的文献内容，提取图3的诊断流程图。",
+    "expected_answer_hint": "图3对应 Stanford B 型主动脉夹层诊断流程图，需要保留图题、图注和流程节点。",
+    "source": "Stanford+B+型主动脉夹层诊断和治疗中国专家共识（2022版）",
+    "risk_focus": "图片型流程图 OCR 可能无法完整识别，需要依赖 MinerU 的图文区域、图注和页码溯源。"
+  },
+  {
+    "id": "competition-q2",
+    "query": "请根据输入的文献内容，提取 Table 1 的表格数据。",
+    "expected_answer_hint": "返回 shchelochkov2019.pdf 中 Table 1 的表格内容，并保留表题和来源页。",
+    "source": "shchelochkov2019.pdf",
+    "risk_focus": "医学论文中存在较长横向表格，解析时容易发生列错位或表格旋转识别失败。"
+  },
+  {
+    "id": "competition-q3",
+    "query": "请根据输入的文献内容，提取图5中的表格数据。",
+    "expected_answer_hint": "返回 todo1992.pdf 中图5包含的表格数据，并标明图题、页码和来源片段。",
+    "source": "todo1992.pdf",
+    "risk_focus": "早期扫描文献印刷模糊，表格识别容易出现错行、漏列和字符误识别。"
+  },
+  {
+    "id": "competition-q4",
+    "query": "请根据输入的文献内容，提取第2页问题四的答案。",
+    "expected_answer_hint": "应召回子宫内膜异位症超声评估中国专家共识第2页中与彩色多普勒血流显像（CDFI）相关的答案。",
+    "source": "子宫内膜异位症超声评估中国专家共识.pdf",
+    "risk_focus": "水印遮挡会影响 OCR 质量，需要通过页码、上下文和证据片段降低幻觉风险。"
+  },
+  {
+    "id": "competition-q5",
+    "query": "请根据输入的文献内容，提取摘要中的结果部分内容。",
+    "expected_answer_hint": "应召回 seyfarth2008.pdf 摘要 Results 中包含 ΔCI = 0.11 ± 0.31 l/min/m2 等医学指标单位的内容。",
+    "source": "seyfarth2008.pdf",
+    "risk_focus": "医学指标、希腊字母、正负号和单位容易漏识别或被错误切分。"
+  }
+]

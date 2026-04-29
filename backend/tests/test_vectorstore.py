@@ -29,3 +29,33 @@ def test_sqlite_vectorstore_similarity_search(db_session):
 
     assert results[0].chunk_id == "c1"
     assert results[0].score > 0.9
+
+
+def test_sqlite_vectorstore_filters_document_id(db_session):
+    store = SQLiteVectorStore(db_session)
+    store.upsert(
+        [
+            VectorDocument(
+                knowledge_base_id=1,
+                document_id="doc-a",
+                chunk_id="a1",
+                content="shared medical term",
+                embedding=[1.0, 0.0],
+                metadata={"section_path": "Results"},
+            ),
+            VectorDocument(
+                knowledge_base_id=1,
+                document_id="doc-b",
+                chunk_id="b1",
+                content="shared medical term",
+                embedding=[1.0, 0.0],
+                metadata={"section_path": "Results"},
+            ),
+        ]
+    )
+
+    results = store.similarity_search(
+        1, [1.0, 0.0], top_k=5, filters={"document_id": "doc-b"}
+    )
+
+    assert [result.document_id for result in results] == ["doc-b"]

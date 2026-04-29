@@ -66,7 +66,7 @@ class SQLiteVectorStore(VectorStore):
         results: list[SearchResult] = []
         for entry in entries:
             metadata = json.loads(entry.metadata_json or "{}")
-            if not self._matches(metadata, filters or {}):
+            if not self._matches(entry, metadata, filters or {}):
                 continue
             score = self._cosine(query_embedding, json.loads(entry.embedding_json))
             results.append(
@@ -80,8 +80,17 @@ class SQLiteVectorStore(VectorStore):
             )
         return sorted(results, key=lambda item: item.score, reverse=True)[:top_k]
 
-    def _matches(self, metadata: dict[str, Any], filters: dict[str, Any]) -> bool:
-        return all(metadata.get(key) == value for key, value in filters.items())
+    def _matches(
+        self, entry: VectorEntry, metadata: dict[str, Any], filters: dict[str, Any]
+    ) -> bool:
+        for key, value in filters.items():
+            if key == "document_id" and entry.document_id != value:
+                return False
+            if key == "chunk_id" and entry.chunk_id != value:
+                return False
+            if key not in {"document_id", "chunk_id"} and metadata.get(key) != value:
+                return False
+        return True
 
     def _cosine(self, left: list[float], right: list[float]) -> float:
         if not left or not right:

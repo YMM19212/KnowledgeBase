@@ -2,6 +2,7 @@ import hashlib
 import logging
 import math
 import re
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
@@ -60,14 +61,28 @@ class SentenceTransformerEmbeddingService(EmbeddingService):
 class JinaEmbeddingService(EmbeddingService):
     """Jina AI embedding client for multilingual retrieval."""
 
-    def __init__(self, api_key: str, model: str = "jina-embeddings-v5-text-small") -> None:
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "jina-embeddings-v5-text-small",
+        batch_size: int = 8,
+        max_retries: int = 5,
+        max_input_chars: int = 12000,
+    ) -> None:
         if not api_key:
             raise ValueError("Jina API key is required for Jina embeddings.")
         self.api_key = api_key
         self.model = model
+        self.batch_size = batch_size
+        self.max_retries = max_retries
+        self.max_input_chars = max_input_chars
 
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
-        return self._embed(texts, task="retrieval.passage")
+        vectors: list[list[float]] = []
+        for start in range(0, len(texts), self.batch_size):
+            batch = texts[start : start + self.batch_size]
+            vectors.extend(self._embed(batch, task="retrieval.passage"))
+        return vectors
 
     def embed_query(self, text: str) -> list[float]:
         return self._embed([text], task="retrieval.query")[0]
@@ -75,23 +90,48 @@ class JinaEmbeddingService(EmbeddingService):
     def _embed(self, texts: list[str], task: str) -> list[list[float]]:
         if not texts:
             return []
-        response = httpx.post(
-            "https://api.jina.ai/v1/embeddings",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}",
-            },
-            json={
-                "model": self.model,
-                "task": task,
-                "normalized": True,
-                "input": texts,
-            },
-            timeout=120,
-        )
-        response.raise_for_status()
-        data = response.json().get("data", [])
-        return [item["embedding"] for item in data]
+        prepared_texts = [self._prepare_text(text) for text in texts]
+        last_error: Exception | None = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                response = httpx.post(
+                    "https://api.jina.ai/v1/embeddings",
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {self.api_key}",
+                    },
+                    json={
+                        "model": self.model,
+                        "task": task,
+                        "normalized": True,
+                        "input": prepared_texts,
+                    },
+                    timeout=120,
+                )
+                response.raise_for_status()
+                data = response.json().get("data", [])
+                vectors = [item["embedding"] for item in data]
+                if len(vectors) != len(texts):
+                    raise RuntimeError(
+                        "Jina embeddings returned an unexpected vector count: "
+                        f"expected {len(texts)}, got {len(vectors)}"
+                    )
+                return vectors
+            except Exception as exc:
+                last_error = exc
+                if attempt < self.max_retries:
+                    time.sleep(1.5 * attempt)
+        if len(texts) > 1:
+            midpoint = len(texts) // 2
+            return self._embed(texts[:midpoint], task) + self._embed(texts[midpoint:], task)
+        assert last_error is not None
+        raise last_error
+
+    def _prepare_text(self, text: str) -> str:
+        text = text.strip()
+        if len(text) <= self.max_input_chars:
+            return text
+        return text[: self.max_input_chars]
 
 
 @dataclass(frozen=True)

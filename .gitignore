@@ -19,6 +19,9 @@ data/chroma/*
 data/storage/*
 !data/storage/.gitkeep
 data/mineru_outputs/
+CompetitionMinerU/
+CompetitionTopic/
+赛事题目/
 *.log
 frontend/node_modules/
 frontend/dist/

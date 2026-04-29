@@ -101,6 +101,7 @@ class IndexingService:
             self.db.scalars(select(ChunkRecord).where(ChunkRecord.document_id == document_id))
         ):
             self.db.delete(existing)
+        self.db.flush()
         for chunk in chunks:
             metadata = {**chunk.metadata, **chunk.source_span, "citation_text": chunk.citation_text}
             self.db.add(

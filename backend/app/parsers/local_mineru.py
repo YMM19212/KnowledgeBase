@@ -3,6 +3,7 @@ import re
 import subprocess
 import time
 from dataclasses import dataclass, field
+from hashlib import sha1
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +51,18 @@ class LocalMinerUParserAdapter(BaseParser):
         return self.normalize_mineru_output(
             raw, source_file=str(pdf_path), output_dir=Path(run.output_dir)
         )
+
+    def parse_output_dir(
+        self,
+        output_dir: Path | str,
+        source_file: Path | str | None = None,
+    ) -> ParsedDocument:
+        """Normalize existing MinerU artifacts without running the MinerU CLI."""
+
+        output_path = Path(output_dir)
+        raw = self.load_best_artifact(output_path)
+        source = str(source_file or self._infer_source_file(output_path) or output_path)
+        return self.normalize_mineru_output(raw, source_file=source, output_dir=output_path)
 
     def run_pipeline(self, input_path: Path) -> LocalMinerURun:
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -134,9 +147,11 @@ class LocalMinerUParserAdapter(BaseParser):
         output_dir: Path,
     ) -> ParsedDocument:
         source = Path(source_file)
-        document_id = self._safe_id(source.stem)
+        clean_stem = re.sub(r"_origin$", "", source.stem)
+        document_id = self._safe_id(clean_stem)
         title = (
-            source.stem.replace("_", " ").replace("-", " ").strip() or "Untitled Medical Document"
+            clean_stem.replace("_", " ").replace("-", " ").strip()
+            or "Untitled Medical Document"
         )
         kind = raw.get("kind")
         payload = raw.get("payload")
@@ -190,11 +205,14 @@ class LocalMinerUParserAdapter(BaseParser):
             if not text.strip():
                 continue
             if "table" in item_type:
+                caption = self._stringify(
+                    item.get("table_caption") or item.get("caption")
+                )
                 current.tables.append(
                     Table(
                         table_id=f"T{table_index}",
-                        title=item.get("table_caption") or item.get("caption"),
-                        caption=item.get("table_caption") or item.get("caption"),
+                        title=caption,
+                        caption=caption,
                         markdown=text,
                         page_number=page,
                     )
@@ -202,7 +220,11 @@ class LocalMinerUParserAdapter(BaseParser):
                 table_index += 1
             elif "image" in item_type or "figure" in item_type:
                 current.figures.append(
-                    Figure(figure_id=f"F{figure_index}", caption=text, page_number=page)
+                    Figure(
+                        figure_id=f"F{figure_index}",
+                        caption=text,
+                        page_number=page,
+                    )
                 )
                 figure_index += 1
             else:
@@ -283,19 +305,30 @@ class LocalMinerUParserAdapter(BaseParser):
             item.get("img_caption"),
         ]
         for value in candidates:
-            if isinstance(value, list):
-                value = " ".join(str(part) for part in value)
             if value:
-                return str(value).strip()
+                return self._stringify(value)
         return ""
+
+    def _stringify(self, value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, list):
+            return " ".join(self._stringify(part) for part in value if part is not None).strip()
+        if isinstance(value, dict):
+            return json.dumps(value, ensure_ascii=False)
+        return str(value).strip()
 
     def _is_heading(self, item: dict[str, Any], text: str) -> bool:
         item_type = str(item.get("type") or item.get("category") or "").lower()
+        if item.get("text_level") is not None:
+            return True
         if "title" in item_type or "heading" in item_type:
             return True
         return bool(re.match(r"^\s{0,3}(#{1,6})\s+\S+", text))
 
     def _heading_level(self, item: dict[str, Any], text: str) -> int:
+        if item.get("text_level") is not None:
+            return int(item["text_level"])
         if item.get("level"):
             return int(item["level"])
         match = re.match(r"^\s{0,3}(#{1,6})\s+\S+", text)
@@ -333,6 +366,12 @@ class LocalMinerUParserAdapter(BaseParser):
     def _artifact_files(self, output_dir: Path) -> list[Path]:
         return sorted(path for path in output_dir.rglob("*") if path.is_file())
 
+    def _infer_source_file(self, output_dir: Path) -> Path | None:
+        origin_pdf = next(output_dir.glob("*_origin.pdf"), None)
+        if origin_pdf:
+            return origin_pdf
+        return next(output_dir.glob("*.pdf"), None)
+
     def _find_first(self, files: list[Path], suffixes: list[str]) -> Path | None:
         for suffix in suffixes:
             found = next((path for path in files if path.name.endswith(suffix)), None)
@@ -345,5 +384,10 @@ class LocalMinerUParserAdapter(BaseParser):
             return json.load(f)
 
     def _safe_id(self, value: str) -> str:
-        cleaned = re.sub(r"[^a-zA-Z0-9_-]+", "-", value).strip("-").lower()
-        return cleaned or f"mineru-doc-{int(time.time())}"
+        cleaned = re.sub(r"[^a-zA-Z0-9_\-\u4e00-\u9fff]+", "-", value).strip("-").lower()
+        if not cleaned:
+            cleaned = f"mineru-doc-{int(time.time())}"
+        if len(cleaned) > 56:
+            digest = sha1(value.encode("utf-8")).hexdigest()[:8]
+            cleaned = f"{cleaned[:47]}-{digest}"
+        return cleaned
