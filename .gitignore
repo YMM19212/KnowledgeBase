@@ -19,6 +19,7 @@ data/chroma/*
 data/storage/*
 !data/storage/.gitkeep
 data/mineru_outputs/
+data/mineru_remote_outputs/
 CompetitionMinerU/
 CompetitionTopic/
 赛事题目/

@@ -9,6 +9,7 @@
 ## 项目亮点
 
 - **本地 MinerU 接入**：支持通过 Web 页面上传 PDF，并调用本机 `mineru` CLI 的 pipeline 模式清洗文献。
+- **远程 MinerU 接入**：支持通过 SSH/SFTP 调用服务器上的 MinerU，适合 Mac 本地不跑重任务、服务器负责清洗。
 - **医疗语义切分**：按医学论文结构切分，而不是固定字数切分，重点保留 Primary outcome、Secondary outcome、Adverse events、Subgroup analysis、Limitations 等上下文。
 - **医学证据单元**：入库时生成 `evidence_units`，把摘要结果、主要/次要结局、表格、图注、中文临床问题等转为可检索、可引用的证据块。
 - **Kimi 入库增强**：支持 Kimi K2.5 / Moonshot OpenAI-compatible API，在入库或 evidence 重建时抽取 outcomes、groups、timepoints、values、units 等结构化事实。
@@ -207,6 +208,35 @@ MEDRAG_MINERU_CLI_COMMAND=mineru
 MEDRAG_MINERU_LOCAL_OUTPUT_DIR=./data/mineru_outputs
 MEDRAG_MINERU_CLI_TIMEOUT_SECONDS=1800
 ```
+
+## 使用远程服务器 MinerU 入库
+
+如果 MinerU 部署在服务器上，可以使用 SSH 远程模式。后端会上传 PDF 到服务器，运行远程
+`mineru -p ... -o ... -b pipeline`，下载 MinerU 输出，再继续执行语义切分、evidence 生成、
+embedding 和入库。
+
+`.env` 配置：
+
+```bash
+MEDRAG_MINERU_REMOTE_HOST=172.31.22.13
+MEDRAG_MINERU_REMOTE_PORT=22
+MEDRAG_MINERU_REMOTE_USER=root
+MEDRAG_MINERU_REMOTE_PASSWORD=your_server_password
+MEDRAG_MINERU_REMOTE_WORK_DIR=/tmp/medrag_mineru
+MEDRAG_MINERU_REMOTE_OUTPUT_DIR=./data/mineru_remote_outputs
+```
+
+前端入口：
+
+```text
+知识库详情 → 本地 MinerU Pipeline 清洗导入 → 用远程 MinerU 入库
+```
+
+说明：
+
+- 密码只放在本地 `.env`，不要写进源码或 README。
+- 更推荐后续改成 SSH key：配置 `MEDRAG_MINERU_REMOTE_KEY_PATH` 后即可不用密码。
+- 如果后端运行在 Docker 中，需要保证容器可以访问服务器的 22 端口。
 
 ## 使用已清洗好的 MinerU 目录入库
 

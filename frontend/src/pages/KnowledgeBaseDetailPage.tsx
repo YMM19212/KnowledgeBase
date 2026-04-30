@@ -30,6 +30,7 @@ export function KnowledgeBaseDetailPage() {
   const kb = useApi(() => api.getKnowledgeBase(id), [id]);
   const docs = useApi(() => api.listDocuments(id), [id]);
   const mineruStatus = useApi(api.localMinerUStatus, []);
+  const remoteMineruStatus = useApi(api.remoteMinerUStatus, []);
 
   async function handleIngestMock() {
     setBusy(true);
@@ -92,6 +93,28 @@ export function KnowledgeBaseDetailPage() {
       await Promise.all([kb.refresh(), docs.refresh()]);
     } catch (error) {
       setMineruError(error instanceof Error ? error.message : "MinerU 清洗失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRemoteMinerU() {
+    if (!mineruFile) return;
+    setBusy(true);
+    setMineruError("");
+    setMineruResult(null);
+    try {
+      const result = await api.ingestWithRemoteMinerU(id, {
+        file: mineruFile,
+        method,
+        lang,
+        formula,
+        table
+      });
+      setMineruResult(result);
+      await Promise.all([kb.refresh(), docs.refresh()]);
+    } catch (error) {
+      setMineruError(error instanceof Error ? error.message : "远程 MinerU 清洗失败");
     } finally {
       setBusy(false);
     }
@@ -238,8 +261,36 @@ export function KnowledgeBaseDetailPage() {
                 <Play className="h-4 w-4" />
                 {busy ? "MinerU 清洗与入库中..." : "运行 Pipeline 并入库"}
               </Button>
+              <div className="mt-4 border-t border-border pt-4">
+                <div className="mb-2 flex items-center justify-between text-sm">
+                  <span>Remote MinerU</span>
+                  <Badge variant={remoteMineruStatus.data?.available ? "success" : "warning"}>
+                    {remoteMineruStatus.loading
+                      ? "checking"
+                      : remoteMineruStatus.data?.available
+                        ? "available"
+                        : "unavailable"}
+                  </Badge>
+                </div>
+                <div className="break-all text-xs leading-5 text-muted-foreground">
+                  command: {remoteMineruStatus.data?.command ?? "ssh remote mineru"}
+                  <br />
+                  version: {remoteMineruStatus.data?.version ?? remoteMineruStatus.data?.error ?? "N/A"}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-3 w-full"
+                  disabled={busy || !mineruFile || remoteMineruStatus.data?.available === false}
+                  onClick={() => void handleRemoteMinerU()}
+                >
+                  <Play className="h-4 w-4" />
+                  {busy ? "远程清洗与入库中..." : "用远程 MinerU 入库"}
+                </Button>
+              </div>
               <p className="text-xs leading-5 text-muted-foreground">
                 处理完成后，系统会优先读取 MinerU 的 content_list JSON；如果没有 JSON，则回退解析 Markdown。
+                远程模式会通过 SSH 上传文件、运行服务器上的 MinerU，再下载解析产物。
               </p>
             </div>
           </form>

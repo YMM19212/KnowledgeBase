@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     mineru_cli_command: str = "mineru"
     mineru_local_output_dir: Path = Path("./data/mineru_outputs")
     mineru_cli_timeout_seconds: int = Field(default=1800, ge=30)
+    mineru_remote_host: str | None = None
+    mineru_remote_port: int = Field(default=22, ge=1, le=65535)
+    mineru_remote_user: str = "root"
+    mineru_remote_password: str | None = None
+    mineru_remote_key_path: Path | None = None
+    mineru_remote_work_dir: str = "/tmp/medrag_mineru"
+    mineru_remote_output_dir: Path = Path("./data/mineru_remote_outputs")
 
     openai_api_base: str | None = None
     openai_api_key: str | None = None

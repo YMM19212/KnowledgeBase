@@ -30,6 +30,16 @@ Deletes metadata, documents, chunks, and vectors for the KB.
 
 Multipart upload. In the mock phase, uploaded PDF bytes are saved locally and parsed through the mock parser unless the parser is replaced.
 
+`POST /knowledge-bases/{kb_id}/documents/mineru-remote`
+
+Multipart upload. The backend uploads the file to the configured SSH server,
+runs remote MinerU pipeline, downloads artifacts, then ingests the normalized
+document.
+
+`GET /mineru/remote/status`
+
+Checks SSH connectivity and remote `mineru --version`.
+
 `GET /knowledge-bases/{kb_id}/documents`
 
 Lists documents in a KB.

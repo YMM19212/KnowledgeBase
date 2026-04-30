@@ -12,12 +12,14 @@ import { api } from "../lib/api";
 export function MinerUConfigPage() {
   const { data, loading, error, refresh } = useApi(api.config, []);
   const localStatus = useApi(api.localMinerUStatus, []);
+  const remoteStatus = useApi(api.remoteMinerUStatus, []);
 
   if (loading) return <Skeleton className="h-[520px]" />;
   if (error || !data) return <RetryState message={error ?? "无法加载配置"} onRetry={refresh} />;
 
   const checks = [
     { label: "local mineru CLI", state: localStatus.data?.available ? "available" : "check needed" },
+    { label: "remote mineru SSH", state: remoteStatus.data?.available ? "available" : "check needed" },
     { label: "submit_parse_task()", state: data.parser_mode === "mineru" ? "ready" : "reserved" },
     { label: "get_parse_result()", state: data.parser_mode === "mineru" ? "ready" : "reserved" },
     { label: "normalize_mineru_json()", state: "implemented boundary" },
@@ -52,6 +54,14 @@ export function MinerUConfigPage() {
           <div>
             <label className="mb-2 block text-sm font-medium">Local Output Directory</label>
             <Input readOnly value={data.mineru_local_output_dir || "./data/mineru_outputs"} />
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-medium">Remote MinerU Host</label>
+            <Input readOnly value={data.mineru_remote_host || "未配置"} />
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-medium">Remote Work Directory</label>
+            <Input readOnly value={data.mineru_remote_work_dir || "/tmp/medrag_mineru"} />
           </div>
         </CardContent>
       </Card>
@@ -95,6 +105,10 @@ export function MinerUConfigPage() {
             </p>
             <p>
               推荐新增配置：解析语言、OCR 模式、表格抽取强度、图注关联策略、任务超时与重试策略。
+            </p>
+            <p>
+              当前支持 SSH 远程模式：后端通过 SFTP 上传 PDF 到服务器，执行服务器上的 `mineru`
+              pipeline，再下载 MinerU 输出目录并复用现有知识库入库流程。
             </p>
           </CardContent>
         </Card>

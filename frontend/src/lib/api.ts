@@ -107,6 +107,39 @@ export const api = {
     return response.json() as Promise<LocalMinerUIngestResponse>;
   },
   localMinerUStatus: () => request<LocalMinerUStatus>("/mineru/local/status"),
+  remoteMinerUStatus: () => request<LocalMinerUStatus>("/mineru/remote/status"),
+  ingestWithRemoteMinerU: async (
+    knowledgeBaseId: number,
+    payload: {
+      file: File;
+      method: string;
+      lang: string;
+      formula: boolean;
+      table: boolean;
+    }
+  ) => {
+    const formData = new FormData();
+    formData.append("file", payload.file);
+    formData.append("method", payload.method);
+    formData.append("lang", payload.lang);
+    formData.append("formula", String(payload.formula));
+    formData.append("table", String(payload.table));
+    const response = await fetch(`${API_BASE_URL}/knowledge-bases/${knowledgeBaseId}/documents/mineru-remote`, {
+      method: "POST",
+      body: formData
+    });
+    if (!response.ok) {
+      let message = `Remote MinerU ingest failed: HTTP ${response.status}`;
+      try {
+        const data = await response.json();
+        message = data.detail ?? message;
+      } catch {
+        // Keep status message.
+      }
+      throw new Error(message);
+    }
+    return response.json() as Promise<LocalMinerUIngestResponse>;
+  },
   rebuildIndex: (knowledgeBaseId: number) =>
     request<{ indexed_chunks: number }>(`/knowledge-bases/${knowledgeBaseId}/index/rebuild`, {
       method: "POST"

@@ -18,6 +18,7 @@ from backend.app.models.db import (
 )
 from backend.app.parsers.local_mineru import LocalMinerUParserAdapter
 from backend.app.parsers.mock import MockParser
+from backend.app.parsers.remote_mineru import RemoteMinerUParserAdapter
 from backend.app.rag.service import RAGService
 from backend.app.schemas.api import (
     ChunkRead,
@@ -139,6 +140,17 @@ def local_mineru_status():
     )
 
 
+@router.get("/mineru/remote/status", response_model=LocalMinerUStatus)
+def remote_mineru_status():
+    status = RemoteMinerUParserAdapter().check_status()
+    return LocalMinerUStatus(
+        available=status.available,
+        command=f"ssh {status.user}@{status.host or '<not-configured>'} {status.command}",
+        version=status.version,
+        error=status.error,
+    )
+
+
 @router.post("/knowledge-bases/{kb_id}/documents", response_model=DocumentRead)
 async def upload_document(
     kb_id: int,
@@ -193,6 +205,41 @@ async def upload_document_with_local_mineru(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     if parser.last_run is None:
         raise HTTPException(status_code=500, detail="MinerU did not produce run metadata")
+    return LocalMinerUIngestResponse(
+        document=DocumentRead(**document_to_dict(document)),
+        mineru=LocalMinerURunRead(**parser.last_run.__dict__),
+    )
+
+
+@router.post(
+    "/knowledge-bases/{kb_id}/documents/mineru-remote",
+    response_model=LocalMinerUIngestResponse,
+)
+async def upload_document_with_remote_mineru(
+    kb_id: int,
+    file: UploadFile = File(...),
+    method: str = Form(default="auto"),
+    lang: str = Form(default="ch"),
+    formula: bool = Form(default=True),
+    table: bool = Form(default=True),
+    db: Session = Depends(db_session),
+):
+    if not KnowledgeBaseService(db).get(kb_id):
+        raise HTTPException(status_code=404, detail="Knowledge base not found")
+    if method not in {"auto", "txt", "ocr"}:
+        raise HTTPException(status_code=400, detail="Unsupported MinerU method")
+    settings = get_settings()
+    settings.storage_dir.mkdir(parents=True, exist_ok=True)
+    settings.mineru_remote_output_dir.mkdir(parents=True, exist_ok=True)
+    saved_path = settings.storage_dir / file.filename
+    saved_path.write_bytes(await file.read())
+    parser = RemoteMinerUParserAdapter(method=method, lang=lang, formula=formula, table=table)
+    try:
+        document = IndexingService(db, parser=parser).ingest_pdf(kb_id, saved_path)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    if parser.last_run is None:
+        raise HTTPException(status_code=500, detail="Remote MinerU did not produce run metadata")
     return LocalMinerUIngestResponse(
         document=DocumentRead(**document_to_dict(document)),
         mineru=LocalMinerURunRead(**parser.last_run.__dict__),
@@ -348,7 +395,22 @@ def public_config(db: Session = Depends(db_session)):
         "mineru_api_url": settings.mineru_api_url,
         "mineru_cli_command": settings.mineru_cli_command,
         "mineru_local_output_dir": str(settings.mineru_local_output_dir),
-        "parser_mode": "remote-mineru" if settings.mineru_api_url else "mock/local-mineru",
+        "mineru_remote_host": settings.mineru_remote_host,
+        "mineru_remote_user": settings.mineru_remote_user,
+        "mineru_remote_work_dir": settings.mineru_remote_work_dir,
+        "mineru_remote_output_dir": str(settings.mineru_remote_output_dir),
+        "mineru_remote_configured": bool(
+            settings.mineru_remote_host
+            and settings.mineru_remote_user
+            and (settings.mineru_remote_password or settings.mineru_remote_key_path)
+        ),
+        "parser_mode": (
+            "remote-mineru"
+            if settings.mineru_remote_host
+            else "remote-api-mineru"
+            if settings.mineru_api_url
+            else "mock/local-mineru"
+        ),
         "llm_provider": app_settings["llm_provider"],
         "llm_base_url": app_settings["llm_base_url"],
         "llm_model": app_settings["llm_model"],

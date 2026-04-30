@@ -127,6 +127,11 @@ export type PublicConfig = {
   mineru_api_url?: string | null;
   mineru_cli_command?: string;
   mineru_local_output_dir?: string;
+  mineru_remote_host?: string | null;
+  mineru_remote_user?: string | null;
+  mineru_remote_work_dir?: string | null;
+  mineru_remote_output_dir?: string | null;
+  mineru_remote_configured?: boolean;
   parser_mode: "mock" | "mineru" | string;
   llm_provider: string;
   llm_base_url?: string | null;

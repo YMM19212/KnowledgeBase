@@ -40,6 +40,36 @@ python scripts/ingest_mineru_outputs.py --input-dir CompetitionMinerU
 
 The script scans for `*_content_list.json` under each `auto/` directory and calls `LocalMinerUParserAdapter.parse_output_dir()`.
 
+## Remote SSH MinerU
+
+When MinerU runs on a remote server, configure SSH access:
+
+```bash
+MEDRAG_MINERU_REMOTE_HOST=172.31.22.13
+MEDRAG_MINERU_REMOTE_PORT=22
+MEDRAG_MINERU_REMOTE_USER=root
+MEDRAG_MINERU_REMOTE_PASSWORD=...
+MEDRAG_MINERU_REMOTE_WORK_DIR=/tmp/medrag_mineru
+MEDRAG_MINERU_REMOTE_OUTPUT_DIR=./data/mineru_remote_outputs
+```
+
+Remote flow:
+
+```text
+Frontend uploads PDF
+  -> backend saves file locally
+  -> backend uploads PDF over SFTP
+  -> backend runs remote mineru pipeline through SSH
+  -> backend downloads remote output artifacts
+  -> LocalMinerU normalizer maps artifacts to ParsedDocument
+  -> semantic chunking, evidence units, vectors, and RAG indexing continue locally
+```
+
+API:
+
+- `GET /api/v1/mineru/remote/status`
+- `POST /api/v1/knowledge-bases/{kb_id}/documents/mineru-remote`
+
 ## Functions to Implement
 
 `MinerUParserAdapter.submit_parse_task(pdf_path)`
