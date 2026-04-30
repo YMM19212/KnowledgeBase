@@ -7,6 +7,7 @@ import type {
   LLMSettings,
   LocalMinerUIngestResponse,
   LocalMinerUStatus,
+  MinerURemoteSettings,
   PublicConfig,
   QueryResponse,
   Stats
@@ -174,6 +175,20 @@ export const api = {
     llm_api_key?: string;
   }) =>
     request<LLMSettings>("/settings/llm", {
+      method: "PUT",
+      body: JSON.stringify(payload)
+    }),
+  mineruRemoteSettings: () => request<MinerURemoteSettings>("/settings/mineru-remote"),
+  updateMinerURemoteSettings: (payload: {
+    mineru_remote_host?: string;
+    mineru_remote_port?: number;
+    mineru_remote_user?: string;
+    mineru_remote_password?: string;
+    mineru_remote_key_path?: string;
+    mineru_remote_work_dir?: string;
+    mineru_remote_output_dir?: string;
+  }) =>
+    request<MinerURemoteSettings>("/settings/mineru-remote", {
       method: "PUT",
       body: JSON.stringify(payload)
     })

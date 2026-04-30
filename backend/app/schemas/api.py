@@ -137,3 +137,26 @@ class LLMSettingsUpdate(BaseModel):
     llm_base_url: str | None = None
     llm_model: str | None = None
     llm_api_key: str | None = None
+
+
+class MinerURemoteSettingsRead(BaseModel):
+    mineru_remote_host: str | None = None
+    mineru_remote_port: int = 22
+    mineru_remote_user: str = "root"
+    mineru_remote_key_path: str | None = None
+    mineru_remote_work_dir: str = "/tmp/medrag_mineru"
+    mineru_remote_output_dir: str = "./data/mineru_remote_outputs"
+    mineru_remote_source: str = "environment"
+    mineru_remote_password_configured: bool = False
+    mineru_remote_password_masked: str | None = None
+    mineru_remote_configured: bool = False
+
+
+class MinerURemoteSettingsUpdate(BaseModel):
+    mineru_remote_host: str | None = None
+    mineru_remote_port: int | None = Field(default=None, ge=1, le=65535)
+    mineru_remote_user: str | None = None
+    mineru_remote_password: str | None = None
+    mineru_remote_key_path: str | None = None
+    mineru_remote_work_dir: str | None = None
+    mineru_remote_output_dir: str | None = None

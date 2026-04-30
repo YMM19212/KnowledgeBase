@@ -33,6 +33,8 @@ from backend.app.schemas.api import (
     LocalMinerUIngestResponse,
     LocalMinerURunRead,
     LocalMinerUStatus,
+    MinerURemoteSettingsRead,
+    MinerURemoteSettingsUpdate,
     MockParseRequest,
     QueryRequest,
     QueryResponse,
@@ -52,6 +54,13 @@ from backend.app.services.settings_service import (
     LLM_BASE_URL_KEY,
     LLM_MODEL_KEY,
     LLM_PROVIDER_KEY,
+    MINERU_REMOTE_HOST_KEY,
+    MINERU_REMOTE_KEY_PATH_KEY,
+    MINERU_REMOTE_OUTPUT_DIR_KEY,
+    MINERU_REMOTE_PASSWORD_KEY,
+    MINERU_REMOTE_PORT_KEY,
+    MINERU_REMOTE_USER_KEY,
+    MINERU_REMOTE_WORK_DIR_KEY,
     AppSettingsService,
 )
 
@@ -141,8 +150,9 @@ def local_mineru_status():
 
 
 @router.get("/mineru/remote/status", response_model=LocalMinerUStatus)
-def remote_mineru_status():
-    status = RemoteMinerUParserAdapter().check_status()
+def remote_mineru_status(db: Session = Depends(db_session)):
+    remote_settings = AppSettingsService(db).effective_mineru_remote_settings()
+    status = RemoteMinerUParserAdapter(remote_settings=remote_settings).check_status()
     return LocalMinerUStatus(
         available=status.available,
         command=f"ssh {status.user}@{status.host or '<not-configured>'} {status.command}",
@@ -230,10 +240,17 @@ async def upload_document_with_remote_mineru(
         raise HTTPException(status_code=400, detail="Unsupported MinerU method")
     settings = get_settings()
     settings.storage_dir.mkdir(parents=True, exist_ok=True)
-    settings.mineru_remote_output_dir.mkdir(parents=True, exist_ok=True)
+    remote_settings = AppSettingsService(db).effective_mineru_remote_settings()
+    remote_settings.output_dir.mkdir(parents=True, exist_ok=True)
     saved_path = settings.storage_dir / file.filename
     saved_path.write_bytes(await file.read())
-    parser = RemoteMinerUParserAdapter(method=method, lang=lang, formula=formula, table=table)
+    parser = RemoteMinerUParserAdapter(
+        method=method,
+        lang=lang,
+        formula=formula,
+        table=table,
+        remote_settings=remote_settings,
+    )
     try:
         document = IndexingService(db, parser=parser).ingest_pdf(kb_id, saved_path)
     except Exception as exc:
@@ -395,18 +412,19 @@ def public_config(db: Session = Depends(db_session)):
         "mineru_api_url": settings.mineru_api_url,
         "mineru_cli_command": settings.mineru_cli_command,
         "mineru_local_output_dir": str(settings.mineru_local_output_dir),
-        "mineru_remote_host": settings.mineru_remote_host,
-        "mineru_remote_user": settings.mineru_remote_user,
-        "mineru_remote_work_dir": settings.mineru_remote_work_dir,
-        "mineru_remote_output_dir": str(settings.mineru_remote_output_dir),
-        "mineru_remote_configured": bool(
-            settings.mineru_remote_host
-            and settings.mineru_remote_user
-            and (settings.mineru_remote_password or settings.mineru_remote_key_path)
-        ),
+        "mineru_remote_host": app_settings["mineru_remote_host"],
+        "mineru_remote_port": app_settings["mineru_remote_port"],
+        "mineru_remote_user": app_settings["mineru_remote_user"],
+        "mineru_remote_key_path": app_settings["mineru_remote_key_path"],
+        "mineru_remote_work_dir": app_settings["mineru_remote_work_dir"],
+        "mineru_remote_output_dir": app_settings["mineru_remote_output_dir"],
+        "mineru_remote_source": app_settings["mineru_remote_source"],
+        "mineru_remote_password_configured": app_settings["mineru_remote_password_configured"],
+        "mineru_remote_password_masked": app_settings["mineru_remote_password_masked"],
+        "mineru_remote_configured": app_settings["mineru_remote_configured"],
         "parser_mode": (
             "remote-mineru"
-            if settings.mineru_remote_host
+            if app_settings["mineru_remote_configured"]
             else "remote-api-mineru"
             if settings.mineru_api_url
             else "mock/local-mineru"
@@ -483,3 +501,42 @@ def update_llm_settings(payload: LLMSettingsUpdate, db: Session = Depends(db_ses
         if api_key and not api_key.startswith("***"):
             service.set(LLM_API_KEY_KEY, api_key)
     return LLMSettingsRead(**service.all_public_settings())
+
+
+@router.get("/settings/mineru-remote", response_model=MinerURemoteSettingsRead)
+def get_mineru_remote_settings(db: Session = Depends(db_session)):
+    return MinerURemoteSettingsRead(**AppSettingsService(db).all_public_settings())
+
+
+@router.put("/settings/mineru-remote", response_model=MinerURemoteSettingsRead)
+def update_mineru_remote_settings(
+    payload: MinerURemoteSettingsUpdate,
+    db: Session = Depends(db_session),
+):
+    service = AppSettingsService(db)
+    if payload.mineru_remote_host is not None:
+        host = payload.mineru_remote_host.strip()
+        if host:
+            service.set(MINERU_REMOTE_HOST_KEY, host)
+    if payload.mineru_remote_port is not None:
+        service.set(MINERU_REMOTE_PORT_KEY, str(payload.mineru_remote_port))
+    if payload.mineru_remote_user is not None:
+        user = payload.mineru_remote_user.strip()
+        if user:
+            service.set(MINERU_REMOTE_USER_KEY, user)
+    if payload.mineru_remote_password is not None:
+        password = payload.mineru_remote_password.strip()
+        if password and not password.startswith("***"):
+            service.set(MINERU_REMOTE_PASSWORD_KEY, password)
+    if payload.mineru_remote_key_path is not None:
+        key_path = payload.mineru_remote_key_path.strip()
+        service.set(MINERU_REMOTE_KEY_PATH_KEY, key_path)
+    if payload.mineru_remote_work_dir is not None:
+        work_dir = payload.mineru_remote_work_dir.strip().rstrip("/")
+        if work_dir:
+            service.set(MINERU_REMOTE_WORK_DIR_KEY, work_dir)
+    if payload.mineru_remote_output_dir is not None:
+        output_dir = payload.mineru_remote_output_dir.strip()
+        if output_dir:
+            service.set(MINERU_REMOTE_OUTPUT_DIR_KEY, output_dir)
+    return MinerURemoteSettingsRead(**service.all_public_settings())

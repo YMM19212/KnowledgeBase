@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
@@ -12,6 +13,13 @@ LLM_PROVIDER_KEY = "llm.provider"
 LLM_BASE_URL_KEY = "llm.base_url"
 LLM_MODEL_KEY = "llm.model"
 LLM_API_KEY_KEY = "llm.api_key"
+MINERU_REMOTE_HOST_KEY = "mineru.remote.host"
+MINERU_REMOTE_PORT_KEY = "mineru.remote.port"
+MINERU_REMOTE_USER_KEY = "mineru.remote.user"
+MINERU_REMOTE_PASSWORD_KEY = "mineru.remote.password"
+MINERU_REMOTE_KEY_PATH_KEY = "mineru.remote.key_path"
+MINERU_REMOTE_WORK_DIR_KEY = "mineru.remote.work_dir"
+MINERU_REMOTE_OUTPUT_DIR_KEY = "mineru.remote.output_dir"
 
 
 @dataclass(frozen=True)
@@ -28,6 +36,18 @@ class EffectiveLLMSettings:
     base_url: str | None
     model: str | None
     api_key: str | None
+    source: str
+
+
+@dataclass(frozen=True)
+class EffectiveMinerURemoteSettings:
+    host: str | None
+    port: int
+    user: str
+    password: str | None
+    key_path: Path | None
+    work_dir: str
+    output_dir: Path
     source: str
 
 
@@ -87,9 +107,37 @@ class AppSettingsService:
             source=source,
         )
 
-    def all_public_settings(self) -> dict[str, str | bool | None]:
+    def effective_mineru_remote_settings(self) -> EffectiveMinerURemoteSettings:
+        settings = get_settings()
+        host = self.get(MINERU_REMOTE_HOST_KEY) or settings.mineru_remote_host
+        port_raw = self.get(MINERU_REMOTE_PORT_KEY)
+        try:
+            port = int(port_raw) if port_raw else settings.mineru_remote_port
+        except ValueError:
+            port = settings.mineru_remote_port
+        user = self.get(MINERU_REMOTE_USER_KEY) or settings.mineru_remote_user
+        password = self.get(MINERU_REMOTE_PASSWORD_KEY) or settings.mineru_remote_password
+        key_path_raw = self.get(MINERU_REMOTE_KEY_PATH_KEY)
+        key_path = Path(key_path_raw) if key_path_raw else settings.mineru_remote_key_path
+        work_dir = self.get(MINERU_REMOTE_WORK_DIR_KEY) or settings.mineru_remote_work_dir
+        output_dir_raw = self.get(MINERU_REMOTE_OUTPUT_DIR_KEY)
+        output_dir = Path(output_dir_raw) if output_dir_raw else settings.mineru_remote_output_dir
+        source = "database" if self.get(MINERU_REMOTE_HOST_KEY) else "environment"
+        return EffectiveMinerURemoteSettings(
+            host=host,
+            port=port,
+            user=user,
+            password=password,
+            key_path=key_path,
+            work_dir=work_dir,
+            output_dir=output_dir,
+            source=source,
+        )
+
+    def all_public_settings(self) -> dict[str, str | int | bool | None]:
         effective = self.effective_embedding_settings()
         llm = self.effective_llm_settings()
+        mineru_remote = self.effective_mineru_remote_settings()
         return {
             "embedding_backend": effective.backend,
             "embedding_model": effective.model,
@@ -102,6 +150,22 @@ class AppSettingsService:
             "llm_source": llm.source,
             "llm_api_key_configured": bool(llm.api_key),
             "llm_api_key_masked": mask_secret(llm.api_key),
+            "mineru_remote_host": mineru_remote.host,
+            "mineru_remote_port": mineru_remote.port,
+            "mineru_remote_user": mineru_remote.user,
+            "mineru_remote_key_path": (
+                str(mineru_remote.key_path) if mineru_remote.key_path else None
+            ),
+            "mineru_remote_work_dir": mineru_remote.work_dir,
+            "mineru_remote_output_dir": str(mineru_remote.output_dir),
+            "mineru_remote_source": mineru_remote.source,
+            "mineru_remote_password_configured": bool(mineru_remote.password),
+            "mineru_remote_password_masked": mask_secret(mineru_remote.password),
+            "mineru_remote_configured": bool(
+                mineru_remote.host
+                and mineru_remote.user
+                and (mineru_remote.password or mineru_remote.key_path)
+            ),
         }
 
 

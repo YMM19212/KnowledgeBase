@@ -128,9 +128,14 @@ export type PublicConfig = {
   mineru_cli_command?: string;
   mineru_local_output_dir?: string;
   mineru_remote_host?: string | null;
+  mineru_remote_port?: number;
   mineru_remote_user?: string | null;
+  mineru_remote_key_path?: string | null;
   mineru_remote_work_dir?: string | null;
   mineru_remote_output_dir?: string | null;
+  mineru_remote_source?: string;
+  mineru_remote_password_configured?: boolean;
+  mineru_remote_password_masked?: string | null;
   mineru_remote_configured?: boolean;
   parser_mode: "mock" | "mineru" | string;
   llm_provider: string;
@@ -157,4 +162,17 @@ export type LLMSettings = {
   llm_source: string;
   llm_api_key_configured: boolean;
   llm_api_key_masked?: string | null;
+};
+
+export type MinerURemoteSettings = {
+  mineru_remote_host?: string | null;
+  mineru_remote_port: number;
+  mineru_remote_user: string;
+  mineru_remote_key_path?: string | null;
+  mineru_remote_work_dir: string;
+  mineru_remote_output_dir: string;
+  mineru_remote_source: string;
+  mineru_remote_password_configured: boolean;
+  mineru_remote_password_masked?: string | null;
+  mineru_remote_configured: boolean;
 };

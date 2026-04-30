@@ -9,6 +9,7 @@ from backend.app.core.config import get_settings
 from backend.app.parsers.base import BaseParser
 from backend.app.parsers.local_mineru import LocalMinerUParserAdapter, LocalMinerURun
 from backend.app.schemas.parsed import ParsedDocument
+from backend.app.services.settings_service import EffectiveMinerURemoteSettings
 
 
 @dataclass
@@ -30,15 +31,25 @@ class RemoteMinerUParserAdapter(BaseParser):
         lang: str = "ch",
         formula: bool = True,
         table: bool = True,
+        remote_settings: EffectiveMinerURemoteSettings | None = None,
     ) -> None:
         settings = get_settings()
-        self.host = settings.mineru_remote_host
-        self.port = settings.mineru_remote_port
-        self.user = settings.mineru_remote_user
-        self.password = settings.mineru_remote_password
-        self.key_path = settings.mineru_remote_key_path
-        self.remote_work_dir = settings.mineru_remote_work_dir.rstrip("/")
-        self.local_output_root = settings.mineru_remote_output_dir
+        if remote_settings:
+            self.host = remote_settings.host
+            self.port = remote_settings.port
+            self.user = remote_settings.user
+            self.password = remote_settings.password
+            self.key_path = remote_settings.key_path
+            self.remote_work_dir = remote_settings.work_dir.rstrip("/")
+            self.local_output_root = remote_settings.output_dir
+        else:
+            self.host = settings.mineru_remote_host
+            self.port = settings.mineru_remote_port
+            self.user = settings.mineru_remote_user
+            self.password = settings.mineru_remote_password
+            self.key_path = settings.mineru_remote_key_path
+            self.remote_work_dir = settings.mineru_remote_work_dir.rstrip("/")
+            self.local_output_root = settings.mineru_remote_output_dir
         self.command = settings.mineru_cli_command
         self.timeout = settings.mineru_cli_timeout_seconds
         self.method = method
@@ -149,7 +160,7 @@ class RemoteMinerUParserAdapter(BaseParser):
         }
         if self.key_path:
             connect_kwargs["key_filename"] = str(self.key_path)
-        else:
+        elif self.password:
             connect_kwargs["password"] = self.password
         client.connect(**connect_kwargs)
         return client
