@@ -66,23 +66,16 @@ export function MinerUConfigPage() {
     });
   }, [remoteSettings.data]);
 
-  if (config.loading || remoteSettings.loading) return <Skeleton className="h-[640px]" />;
+  if (config.loading) return <Skeleton className="h-[640px]" />;
   if (config.error || !config.data) {
     return <RetryState message={config.error ?? "无法加载配置"} onRetry={config.refresh} />;
   }
-  if (remoteSettings.error || !remoteSettings.data) {
-    return (
-      <RetryState
-        message={remoteSettings.error ?? "无法加载远程 MinerU 配置"}
-        onRetry={remoteSettings.refresh}
-      />
-    );
-  }
 
-  const remoteConfigured = remoteSettings.data.mineru_remote_configured;
+  const settings = remoteSettings.data;
+  const remoteConfigured = Boolean(settings?.mineru_remote_configured);
   const remoteAvailable = remoteStatus.data?.available;
-  const passwordLabel = remoteSettings.data.mineru_remote_password_configured
-    ? `已保存：${remoteSettings.data.mineru_remote_password_masked ?? "已脱敏"}`
+  const passwordLabel = settings?.mineru_remote_password_configured
+    ? `已保存：${settings.mineru_remote_password_masked ?? "已脱敏"}`
     : "未保存密码，可填写 SSH 密码";
 
   const update = (key: keyof RemoteForm, value: string) => {
@@ -187,6 +180,12 @@ export function MinerUConfigPage() {
         </CardHeader>
         <CardContent className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
           <div className="space-y-4 rounded-lg border border-border p-4">
+            {remoteSettings.error ? (
+              <Alert variant="warning">
+                远程 MinerU 设置接口暂时不可用：{remoteSettings.error}。你仍然可以先填写连接信息；
+                如果保存时仍显示 Not Found，请重启 FastAPI 后端以加载最新接口。
+              </Alert>
+            ) : null}
             <div className="grid gap-4 md:grid-cols-[1fr_130px]">
               <div>
                 <label className="mb-2 block text-sm font-medium">服务器 Host</label>
@@ -309,7 +308,7 @@ export function MinerUConfigPage() {
               <CardContent className="space-y-2 text-sm leading-6 text-muted-foreground">
                 <p>密码保存到本地 SQLite 运行时设置，接口读取时只返回脱敏值。</p>
                 <p>生产部署建议改用 SSH key 或服务器侧 Secret Manager。</p>
-                <p>当前配置来源：{remoteSettings.data.mineru_remote_source}</p>
+                <p>当前配置来源：{settings?.mineru_remote_source ?? "尚未读取"}</p>
               </CardContent>
             </Card>
           </div>
