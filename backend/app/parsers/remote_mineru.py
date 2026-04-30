@@ -79,7 +79,10 @@ class RemoteMinerUParserAdapter(BaseParser):
             )
         try:
             ssh = self._connect()
-            version_command = f"{shlex.quote(self.command)} --version"
+            version_command = (
+                f"command -v {shlex.quote(self.command)} >/dev/null 2>&1 "
+                f"&& {shlex.quote(self.command)} --version"
+            )
             stdout, stderr, exit_code = self._exec(ssh, version_command, 15)
             ssh.close()
             output = (stdout or stderr).strip()
@@ -191,11 +194,36 @@ class RemoteMinerUParserAdapter(BaseParser):
             raise RuntimeError(stderr.strip() or stdout.strip() or command)
 
     def _exec(self, ssh, command: str, timeout: int) -> tuple[str, str, int]:
-        _, stdout_file, stderr_file = ssh.exec_command(command, timeout=timeout)
+        _, stdout_file, stderr_file = ssh.exec_command(
+            self._login_shell_command(command),
+            timeout=timeout,
+        )
         stdout = stdout_file.read().decode("utf-8", errors="replace")
         stderr = stderr_file.read().decode("utf-8", errors="replace")
         exit_code = stdout_file.channel.recv_exit_status()
         return stdout, stderr, exit_code
+
+    def _login_shell_command(self, command: str) -> str:
+        """Run remote commands with the same PATH users usually get after SSH login."""
+        init_parts = [
+            (
+                'export PATH="$HOME/.local/bin:$HOME/miniconda3/bin:'
+                '$HOME/anaconda3/bin:/opt/conda/bin:$PATH"'
+            ),
+            "[ -f ~/.profile ] && . ~/.profile >/dev/null 2>&1 || true",
+            "[ -f ~/.bashrc ] && . ~/.bashrc >/dev/null 2>&1 || true",
+            (
+                "[ -f ~/miniconda3/etc/profile.d/conda.sh ] "
+                "&& . ~/miniconda3/etc/profile.d/conda.sh >/dev/null 2>&1 || true"
+            ),
+            (
+                "[ -f ~/anaconda3/etc/profile.d/conda.sh ] "
+                "&& . ~/anaconda3/etc/profile.d/conda.sh >/dev/null 2>&1 || true"
+            ),
+            "command -v conda >/dev/null 2>&1 && conda activate base >/dev/null 2>&1 || true",
+            command,
+        ]
+        return f"bash -lc {shlex.quote('; '.join(init_parts))}"
 
     def _download_tree(self, sftp, remote_dir: str, local_dir: Path) -> None:
         local_dir.mkdir(parents=True, exist_ok=True)
