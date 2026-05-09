@@ -47,6 +47,16 @@ class Settings(BaseSettings):
     llm_model: str | None = None
     llm_api_key: str | None = None
 
+    benchmark_model_name: str = "KnowledgeBase-Agent"
+    benchmark_model_id: str = "knowledgebase-agent-v1"
+    benchmark_parameter_count: str = "backbone-dependent"
+    benchmark_open_source: bool = True
+    benchmark_context_length: int = 32768
+    benchmark_api_key: str | None = None
+    benchmark_default_kb_id: int | None = None
+    benchmark_release_date: str = "2026-05-09"
+    benchmark_github_url: str = "https://github.com/YMM19212/KnowledgeBase"
+
     rag_min_score: float = Field(default=0.05, ge=0.0, le=1.0)
     default_top_k: int = Field(default=5, ge=1, le=50)
     cors_origins: list[str] = Field(

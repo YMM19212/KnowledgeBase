@@ -21,10 +21,12 @@ class RAGService:
         llm: OpenAICompatibleLLM | None = None,
     ) -> None:
         self.db = db
-        runtime_embedding = AppSettingsService(db).effective_embedding_settings()
+        app_settings = AppSettingsService(db)
+        runtime_embedding = app_settings.effective_embedding_settings()
+        runtime_llm = app_settings.effective_llm_settings()
         self.embeddings = embeddings or get_embedding_service(runtime_embedding)
         self.vector_store = get_vector_store(db)
-        self.llm = llm or OpenAICompatibleLLM()
+        self.llm = llm or OpenAICompatibleLLM(runtime_settings=runtime_llm)
         self.settings = get_settings()
 
     def query(
