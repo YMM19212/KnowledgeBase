@@ -4,14 +4,13 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app.api.deps import db_session
 from backend.app.core.config import get_settings
-from backend.app.models.db import KnowledgeBase
-from backend.app.rag.llm import OpenAICompatibleLLM
+from backend.app.models.db import ChunkRecord, KnowledgeBase
 from backend.app.rag.service import RAGService
-from backend.app.services.settings_service import AppSettingsService
 
 router = APIRouter()
 
@@ -39,19 +38,22 @@ def _check_benchmark_api_key(authorization: str | None = Header(default=None)) -
         raise HTTPException(status_code=401, detail="Invalid benchmark API key")
 
 
+def _extract_text_content(message: ChatMessage) -> str:
+    content = message.content
+    if isinstance(content, str):
+        return content.strip()
+    fragments = [
+        str(item.get("text", "")).strip()
+        for item in content
+        if item.get("type") == "text"
+    ]
+    return "\n".join(fragment for fragment in fragments if fragment)
+
+
 def _extract_prompt(messages: list[ChatMessage]) -> str:
     parts: list[str] = []
     for message in messages:
-        content = message.content
-        if isinstance(content, str):
-            text = content.strip()
-        else:
-            fragments = [
-                str(item.get("text", "")).strip()
-                for item in content
-                if item.get("type") == "text"
-            ]
-            text = "\n".join(fragment for fragment in fragments if fragment)
+        text = _extract_text_content(message)
         if not text:
             continue
         parts.append(f"{message.role}: {text}")
@@ -60,24 +62,14 @@ def _extract_prompt(messages: list[ChatMessage]) -> str:
     return "\n\n".join(parts)
 
 
-def _to_llm_messages(messages: list[ChatMessage]) -> list[dict[str, str]]:
-    llm_messages: list[dict[str, str]] = []
-    for message in messages:
-        content = message.content
-        if isinstance(content, str):
-            text = content.strip()
-        else:
-            fragments = [
-                str(item.get("text", "")).strip()
-                for item in content
-                if item.get("type") == "text"
-            ]
-            text = "\n".join(fragment for fragment in fragments if fragment)
+def _extract_last_user_message(messages: list[ChatMessage]) -> str:
+    for message in reversed(messages):
+        if message.role != "user":
+            continue
+        text = _extract_text_content(message)
         if text:
-            llm_messages.append({"role": message.role, "content": text})
-    if not llm_messages:
-        raise HTTPException(status_code=400, detail="No usable text content found in messages")
-    return llm_messages
+            return text
+    raise HTTPException(status_code=400, detail="No usable user message found in messages")
 
 
 def _resolve_knowledge_base_id(db: Session) -> int:
@@ -86,9 +78,17 @@ def _resolve_knowledge_base_id(db: Session) -> int:
         kb = db.get(KnowledgeBase, settings.benchmark_default_kb_id)
         if kb:
             return kb.id
-    kb = db.query(KnowledgeBase).order_by(KnowledgeBase.id.asc()).first()
-    if kb:
-        return kb.id
+    rows = db.execute(
+        select(KnowledgeBase.id, func.count(ChunkRecord.id).label("chunk_count"))
+        .outerjoin(ChunkRecord, ChunkRecord.knowledge_base_id == KnowledgeBase.id)
+        .group_by(KnowledgeBase.id)
+        .order_by(KnowledgeBase.id.asc())
+    ).all()
+    for kb_id, chunk_count in rows:
+        if chunk_count and chunk_count > 0:
+            return kb_id
+    if rows:
+        return rows[0][0]
     raise HTTPException(
         status_code=503,
         detail="No knowledge base is available for benchmark serving",
@@ -129,6 +129,7 @@ def benchmark_info():
         "api_key_required": bool(settings.benchmark_api_key),
         "github_url": settings.benchmark_github_url,
         "release_date": settings.benchmark_release_date,
+        "serving_mode": "single_turn_rag",
     }
 
 
@@ -148,52 +149,27 @@ def chat_completions(
                 f"Use '{settings.benchmark_model_id}' instead."
             ),
         )
-    llm = OpenAICompatibleLLM(
-        runtime_settings=AppSettingsService(db).effective_llm_settings()
-    )
-    prompt = _extract_prompt(payload.messages)
-    knowledge_base_id: int | None = None
-    response_mode = "fallback"
-    if llm.configured:
-        try:
-            answer = llm.chat(
-                _to_llm_messages(payload.messages),
-                temperature=payload.temperature or 0.1,
-                max_tokens=payload.max_tokens,
-            )
-            result = {
-                "citations": [],
-                "retrieved_chunks": [],
-                "evidence_units": [],
-                "evidence_sufficiency": "not_applicable",
-            }
-            response_mode = "llm"
-        except Exception:
-            answer = ""
-            result = {}
-    else:
-        answer = ""
-        result = {}
-
-    if not answer:
-        try:
-            knowledge_base_id = _resolve_knowledge_base_id(db)
-            result = RAGService(db).query(
-                knowledge_base_id=knowledge_base_id,
-                query=prompt,
-                top_k=settings.default_top_k,
-            )
-            answer = result["answer"]
-            response_mode = "rag"
-        except Exception:
-            answer = "当前后端没有可用的通用模型或检索能力，无法可靠回答。"
-            result = {
-                "citations": [],
-                "retrieved_chunks": [],
-                "evidence_units": [],
-                "evidence_sufficiency": "insufficient",
-            }
-    prompt_tokens = _estimate_tokens(prompt)
+    raw_prompt = _extract_prompt(payload.messages)
+    query = _extract_last_user_message(payload.messages)
+    knowledge_base_id = _resolve_knowledge_base_id(db)
+    response_mode = "rag"
+    try:
+        result = RAGService(db).query(
+            knowledge_base_id=knowledge_base_id,
+            query=query,
+            top_k=settings.default_top_k,
+        )
+        answer = result["answer"]
+    except Exception:
+        answer = "当前后端问答链路暂不可用，无法可靠回答。"
+        result = {
+            "citations": [],
+            "retrieved_chunks": [],
+            "evidence_units": [],
+            "evidence_sufficiency": "insufficient",
+        }
+        response_mode = "fallback"
+    prompt_tokens = _estimate_tokens(raw_prompt)
     completion_tokens = _estimate_tokens(answer)
     return {
         "id": f"chatcmpl-{uuid.uuid4().hex}",

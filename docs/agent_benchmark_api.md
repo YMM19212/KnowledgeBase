@@ -3,6 +3,12 @@
 This project exposes an OpenAI-compatible HTTP interface so benchmark
 platforms can call the knowledge-base agent as if it were a chat model.
 
+In benchmark mode, the service behaves as a fixed single-turn QA endpoint:
+
+- it uses the last `user` message as the actual question
+- it routes the request to one configured knowledge base
+- it returns one final answer in OpenAI chat-completion format
+
 ## Endpoints
 
 - `GET /v1/models`
@@ -124,9 +130,10 @@ traceability fields useful for RAG evaluation:
 
 - Streaming is not supported.
 - If an OpenAI-compatible LLM is configured, benchmark requests are answered
-  directly by that chat model.
-- If no LLM is configured, the service falls back to the existing RAG pipeline
-  and routes prompts to the configured knowledge base.
+  inside the RAG answer synthesis step when available.
+- The benchmark adapter itself does not behave like a general chat assistant;
+  it is intentionally narrowed to single-turn QA over the selected knowledge
+  base.
 - For organizer forms that require "parameter count" or "context length", use
   the metadata of the backbone model you actually deploy behind this service,
   or keep the default benchmark wrapper metadata for smoke-test runs.

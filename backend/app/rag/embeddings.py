@@ -151,6 +151,9 @@ def get_embedding_service(
     if backend == "hash":
         return HashEmbeddingService(settings.embedding_dimension)
     if backend == "jina":
+        if not jina_api_key:
+            logger.warning("Jina API key is missing; falling back to hash embeddings.")
+            return HashEmbeddingService(settings.embedding_dimension)
         return JinaEmbeddingService(
             api_key=jina_api_key or "",
             model=model or settings.jina_embedding_model,
