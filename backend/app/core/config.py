@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -65,6 +65,13 @@ class Settings(BaseSettings):
             "http://127.0.0.1:5173",
         ]
     )
+
+    @field_validator("benchmark_default_kb_id", mode="before")
+    @classmethod
+    def empty_benchmark_kb_id_as_none(cls, value):
+        if value in {"", None}:
+            return None
+        return value
 
 
 @lru_cache

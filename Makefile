@@ -1,4 +1,4 @@
-.PHONY: install install-rag dev test lint format ingest-sample rebuild-index query clean
+.PHONY: install install-rag dev test lint format ingest-sample rebuild-index query expose expose-stop clean
 
 install:
 	python -m pip install -e ".[dev]"
@@ -30,6 +30,12 @@ rebuild-index:
 
 query:
 	python scripts/query.py --kb-id 1 --query "What was the primary outcome?"
+
+expose:
+	bash scripts/expose_tunnel.sh
+
+expose-stop:
+	bash scripts/expose_tunnel_stop.sh
 
 clean:
 	rm -rf .pytest_cache .ruff_cache **/__pycache__
