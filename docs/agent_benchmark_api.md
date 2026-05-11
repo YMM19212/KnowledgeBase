@@ -1,5 +1,9 @@
 # Agent Benchmark API
 
+For benchmark form submission, use the minimal integration page:
+
+- [Benchmark API Quickstart](https://github.com/YMM19212/KnowledgeBase/blob/main/docs/benchmark_api_quickstart.md)
+
 This project exposes an OpenAI-compatible HTTP interface so benchmark
 platforms can call the knowledge-base agent as if it were a chat model.
 
