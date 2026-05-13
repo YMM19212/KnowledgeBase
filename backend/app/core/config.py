@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     benchmark_github_url: str = "https://github.com/YMM19212/KnowledgeBase"
 
     rag_min_score: float = Field(default=0.05, ge=0.0, le=1.0)
+    query_guard_mode: str = "hybrid"
     default_top_k: int = Field(default=5, ge=1, le=50)
     cors_origins: list[str] = Field(
         default_factory=lambda: [

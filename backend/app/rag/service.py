@@ -10,6 +10,7 @@ from backend.app.core.config import get_settings
 from backend.app.models.db import ChunkRecord, DocumentRecord
 from backend.app.rag.embeddings import EmbeddingService, get_embedding_service
 from backend.app.rag.llm import OpenAICompatibleLLM
+from backend.app.rag.query_guard import QueryGuard
 from backend.app.services.evidence_service import EvidenceService, evidence_unit_to_dict
 from backend.app.services.settings_service import AppSettingsService
 from backend.app.vectorstores.factory import get_vector_store
@@ -31,6 +32,7 @@ class RAGService:
         self.embeddings = embeddings or get_embedding_service(runtime_embedding)
         self.vector_store = get_vector_store(db)
         self.llm = llm or OpenAICompatibleLLM(runtime_settings=runtime_llm)
+        self.query_guard = QueryGuard(db, self.llm)
         self.settings = get_settings()
 
     def query(
@@ -42,6 +44,25 @@ class RAGService:
     ) -> dict[str, Any]:
         effective_filters = self._infer_filters_from_query(knowledge_base_id, query)
         effective_filters.update(filters or {})
+        guard_decision = self.query_guard.evaluate(knowledge_base_id, query, effective_filters)
+        if guard_decision.action in {"reject", "needs_hint"}:
+            logger.info(
+                "rag query kb_id=%s top_k=%s filters=%s answer_mode=%s reason=%s",
+                knowledge_base_id,
+                top_k,
+                effective_filters,
+                f"guard-{guard_decision.action}",
+                guard_decision.reason,
+            )
+            return {
+                "answer": guard_decision.message or "证据不足，无法可靠回答。",
+                "citations": [],
+                "retrieved_chunks": [],
+                "evidence_units": [],
+                "evidence_sufficiency": "insufficient",
+                "answer_mode": f"guard-{guard_decision.action}",
+                "guard_reason": guard_decision.reason,
+            }
         query_vector = self.embeddings.embed_query(query)
         search_k = max(top_k * 10, top_k)
         results = self.vector_store.similarity_search(
@@ -65,6 +86,7 @@ class RAGService:
                 "evidence_units": [],
                 "evidence_sufficiency": "insufficient",
                 "answer_mode": "insufficient",
+                "guard_reason": guard_decision.reason,
             }
         answer_mode = "extractive"
         try:
@@ -110,6 +132,7 @@ class RAGService:
             "evidence_units": evidence_units,
             "evidence_sufficiency": self._evidence_sufficiency(evidence_units),
             "answer_mode": answer_mode,
+            "guard_reason": guard_decision.reason,
         }
 
     def _rerank(self, query: str, results: list[dict[str, Any]]) -> list[dict[str, Any]]:

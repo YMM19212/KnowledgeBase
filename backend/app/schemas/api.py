@@ -107,6 +107,8 @@ class QueryResponse(BaseModel):
     retrieved_chunks: list[dict[str, Any]]
     evidence_units: list[dict[str, Any]] = Field(default_factory=list)
     evidence_sufficiency: str = "sufficient"
+    answer_mode: str = "rag"
+    guard_reason: str | None = None
 
 
 class EmbeddingSettingsRead(BaseModel):
