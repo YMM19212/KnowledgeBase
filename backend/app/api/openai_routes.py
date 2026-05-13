@@ -1,3 +1,4 @@
+import logging
 import time
 import uuid
 from typing import Any
@@ -13,6 +14,7 @@ from backend.app.models.db import ChunkRecord, KnowledgeBase
 from backend.app.rag.service import RAGService
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class ChatMessage(BaseModel):
@@ -153,6 +155,13 @@ def chat_completions(
     query = _extract_last_user_message(payload.messages)
     knowledge_base_id = _resolve_knowledge_base_id(db)
     response_mode = "rag"
+    logger.info(
+        "benchmark request model=%s kb_id=%s prompt_chars=%s stream=%s",
+        payload.model,
+        knowledge_base_id,
+        len(raw_prompt),
+        payload.stream,
+    )
     try:
         result = RAGService(db).query(
             knowledge_base_id=knowledge_base_id,
@@ -160,6 +169,7 @@ def chat_completions(
             top_k=settings.default_top_k,
         )
         answer = result["answer"]
+        response_mode = result.get("answer_mode", "rag")
     except Exception:
         answer = "当前后端问答链路暂不可用，无法可靠回答。"
         result = {

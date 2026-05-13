@@ -1,4 +1,6 @@
 import json
+import logging
+import re
 from typing import Any
 
 from sqlalchemy import select
@@ -11,6 +13,8 @@ from backend.app.rag.llm import OpenAICompatibleLLM
 from backend.app.services.evidence_service import EvidenceService, evidence_unit_to_dict
 from backend.app.services.settings_service import AppSettingsService
 from backend.app.vectorstores.factory import get_vector_store
+
+logger = logging.getLogger(__name__)
 
 
 class RAGService:
@@ -47,21 +51,46 @@ class RAGService:
         usable = [item for item in enriched if item["score"] >= self.settings.rag_min_score]
         evidence_units = self._evidence_for_results([item["chunk_id"] for item in usable])
         if not usable:
+            logger.info(
+                "rag query kb_id=%s top_k=%s filters=%s answer_mode=insufficient retrieved=%s",
+                knowledge_base_id,
+                top_k,
+                effective_filters,
+                len(enriched),
+            )
             return {
                 "answer": "证据不足，无法可靠回答。",
                 "citations": [],
                 "retrieved_chunks": enriched,
                 "evidence_units": [],
                 "evidence_sufficiency": "insufficient",
+                "answer_mode": "insufficient",
             }
+        answer_mode = "extractive"
         try:
             answer = (
                 self.llm.answer(query, usable)
                 if self.llm.configured
                 else self._extractive_answer(query, usable)
             )
-        except Exception:
+            answer_mode = "llm" if self.llm.configured else "extractive"
+        except Exception as exc:
+            logger.warning("LLM answer synthesis failed, falling back to extractive: %s", exc)
             answer = self._extractive_answer(query, usable)
+            answer_mode = "extractive-fallback"
+        logger.info(
+            (
+                "rag query kb_id=%s top_k=%s filters=%s answer_mode=%s "
+                "retrieved=%s usable=%s top_score=%.4f"
+            ),
+            knowledge_base_id,
+            top_k,
+            effective_filters,
+            answer_mode,
+            len(enriched),
+            len(usable),
+            usable[0]["score"] if usable else 0.0,
+        )
         return {
             "answer": answer,
             "citations": [
@@ -80,32 +109,25 @@ class RAGService:
             "retrieved_chunks": enriched,
             "evidence_units": evidence_units,
             "evidence_sufficiency": self._evidence_sufficiency(evidence_units),
+            "answer_mode": answer_mode,
         }
 
     def _rerank(self, query: str, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        query_lower = query.lower()
-        section_keywords = {
-            "results": ["results", "结果"],
-            "methods": ["methods", "方法"],
-            "conclusions": ["conclusions", "conclusion", "结论"],
-            "discussion": ["discussion", "讨论"],
-            "table": ["table", "表格", "表 "],
-            "figure": ["figure", "fig.", "图"],
-            "abstract": ["abstract", "摘要"],
-            "question": ["问题一", "问题二", "问题三", "问题四", "问题五"],
-        }
-        requested = {
-            section
-            for section, terms in section_keywords.items()
-            if any(term in query_lower for term in terms)
-        }
+        intent = self._analyze_query_intent(query)
+        requested = intent["requested_sections"]
         reranked: list[dict[str, Any]] = []
         for item in results:
             adjusted = dict(item)
             score = float(adjusted["score"])
+            metadata = adjusted.get("metadata", {})
             section_path = str(adjusted.get("section_path") or "").lower()
             content_type = str(adjusted.get("content_type") or "").lower()
-            evidence_type = str(adjusted.get("metadata", {}).get("evidence_type") or "").lower()
+            evidence_type = str(metadata.get("evidence_type") or "").lower()
+            citation_text = str(adjusted.get("citation_text") or "").lower()
+            document_title = str(adjusted.get("document_title") or "").lower()
+            table_id = str(metadata.get("table_id") or "").lower()
+            figure_id = str(metadata.get("figure_id") or "").lower()
+
             if "results" in requested and "result" in section_path:
                 score += 0.25
             if "methods" in requested and "method" in section_path:
@@ -136,9 +158,115 @@ class RAGService:
                 }
                 if any(section in section_path for section in abstract_sections):
                     score += 0.15
-            adjusted["score"] = min(score, 1.0)
+
+            if intent["table_refs"]:
+                if table_id and table_id in intent["table_refs"]:
+                    score += 0.55
+                elif any(ref in citation_text for ref in intent["table_refs"]):
+                    score += 0.25
+            if intent["figure_refs"]:
+                if figure_id and figure_id in intent["figure_refs"]:
+                    score += 0.55
+                elif any(ref in citation_text for ref in intent["figure_refs"]):
+                    score += 0.25
+            if intent["question_refs"]:
+                if any(
+                    ref in section_path or ref in citation_text
+                    for ref in intent["question_refs"]
+                ):
+                    score += 0.45
+            if intent["page_refs"]:
+                page_start = adjusted.get("page_start")
+                page_end = adjusted.get("page_end") or page_start
+                if isinstance(page_start, int) and isinstance(page_end, int):
+                    if any(page_start <= page <= page_end for page in intent["page_refs"]):
+                        score += 0.35
+
+            overlap = self._lexical_overlap(
+                intent["query_terms"],
+                {
+                    section_path,
+                    citation_text,
+                    document_title,
+                    str(adjusted.get("source_text") or "").lower(),
+                },
+            )
+            score += min(0.18, overlap * 0.03)
+
+            adjusted["score"] = score
             reranked.append(adjusted)
         return sorted(reranked, key=lambda item: item["score"], reverse=True)
+
+    def _analyze_query_intent(self, query: str) -> dict[str, Any]:
+        query_lower = query.lower()
+        section_keywords = {
+            "results": ["results", "结果"],
+            "methods": ["methods", "方法"],
+            "conclusions": ["conclusions", "conclusion", "结论"],
+            "discussion": ["discussion", "讨论"],
+            "table": ["table", "表格", "表 "],
+            "figure": ["figure", "fig.", "图"],
+            "abstract": ["abstract", "摘要"],
+            "question": ["问题一", "问题二", "问题三", "问题四", "问题五"],
+        }
+        requested = {
+            section
+            for section, terms in section_keywords.items()
+            if any(term in query_lower for term in terms)
+        }
+        table_refs = {
+            f"t{match}"
+            for match in re.findall(
+                r"(?:table|表)\s*([0-9]{1,2})",
+                query_lower,
+                flags=re.IGNORECASE,
+            )
+        }
+        figure_refs = {
+            f"f{match}"
+            for match in re.findall(
+                r"(?:figure|fig\.?|图)\s*([0-9]{1,2})",
+                query_lower,
+                flags=re.IGNORECASE,
+            )
+        }
+        normalized_pages: set[int] = set()
+        for match in re.findall(
+            r"(?:第\s*([0-9]{1,3})\s*页|p(?:age)?\.?\s*([0-9]{1,3}))",
+            query_lower,
+        ):
+            for raw in match:
+                if raw:
+                    normalized_pages.add(int(raw))
+        chinese_question_map = {
+            "一": 1,
+            "二": 2,
+            "三": 3,
+            "四": 4,
+            "五": 5,
+            "六": 6,
+            "七": 7,
+            "八": 8,
+            "九": 9,
+            "十": 10,
+        }
+        question_refs = {
+            f"问题{match}"
+            for match in re.findall(r"问题\s*([0-9]{1,2})", query)
+        }
+        question_refs.update(
+            f"问题{char}"
+            for char in chinese_question_map
+            if f"问题{char}" in query
+        )
+        return {
+            "requested_sections": requested,
+            "table_refs": table_refs,
+            "figure_refs": figure_refs,
+            "page_refs": normalized_pages,
+            "question_refs": {item.lower() for item in question_refs},
+            "query_terms": self._tokenize_query_terms(query),
+        }
 
     def _evidence_for_results(self, chunk_ids: list[str]) -> list[dict[str, Any]]:
         units = EvidenceService(self.db).find_for_chunks(chunk_ids)
@@ -180,12 +308,18 @@ class RAGService:
 
     def _enrich_result(self, result) -> dict[str, Any]:
         chunk = self.db.scalar(select(ChunkRecord).where(ChunkRecord.chunk_id == result.chunk_id))
+        document = (
+            self.db.scalar(select(DocumentRecord).where(DocumentRecord.id == result.document_id))
+            if result.document_id
+            else None
+        )
         metadata = dict(result.metadata)
         if chunk:
             metadata = {**json.loads(chunk.metadata_json or "{}"), **metadata}
         return {
             "chunk_id": result.chunk_id,
             "document_id": result.document_id,
+            "document_title": document.title if document else result.document_id,
             "content": result.content,
             "source_text": result.content,
             "score": result.score,
@@ -197,6 +331,30 @@ class RAGService:
             "citation_text": metadata.get("citation_text") or "",
             "metadata": metadata,
         }
+
+    def _tokenize_query_terms(self, query: str) -> set[str]:
+        raw_terms = re.findall(r"[a-z0-9][a-z0-9._-]+|[\u4e00-\u9fff]{2,}", query.lower())
+        stopwords = {
+            "什么",
+            "多少",
+            "如何",
+            "请问",
+            "根据",
+            "提取",
+            "内容",
+            "部分",
+            "回答",
+            "一下",
+            "请用",
+            "一句话",
+        }
+        return {term for term in raw_terms if term not in stopwords}
+
+    def _lexical_overlap(self, query_terms: set[str], fields: set[str]) -> int:
+        if not query_terms:
+            return 0
+        joined = "\n".join(field for field in fields if field)
+        return sum(1 for term in query_terms if term and term in joined)
 
     def _extractive_answer(self, query: str, evidence: list[dict[str, Any]]) -> str:
         top = evidence[:3]

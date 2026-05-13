@@ -31,6 +31,15 @@ class OpenAICompatibleLLM:
     def configured(self) -> bool:
         return bool(self.api_base and self.api_key and self.model)
 
+    def _effective_temperature(self, temperature: float) -> float | None:
+        if not self.model:
+            return temperature
+        model_name = self.model.lower()
+        api_base = (self.api_base or "").lower()
+        if "moonshot.cn" in api_base and model_name.startswith("kimi-k2.6"):
+            return 1.0
+        return temperature
+
     def chat(
         self,
         messages: list[dict[str, str]],
@@ -39,11 +48,13 @@ class OpenAICompatibleLLM:
     ) -> str:
         if not self.configured:
             raise RuntimeError("LLM is not configured")
+        effective_temperature = self._effective_temperature(temperature)
         payload = {
             "model": self.model,
             "messages": messages,
-            "temperature": temperature,
         }
+        if effective_temperature is not None:
+            payload["temperature"] = effective_temperature
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
         response = httpx.post(
@@ -52,7 +63,11 @@ class OpenAICompatibleLLM:
             json=payload,
             timeout=120,
         )
-        response.raise_for_status()
+        if response.is_error:
+            detail = response.text[:500]
+            raise RuntimeError(
+                f"LLM request failed with status {response.status_code}: {detail}"
+            )
         return response.json()["choices"][0]["message"]["content"]
 
     def answer(self, question: str, evidence: list[dict[str, Any]]) -> str:
