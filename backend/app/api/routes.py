@@ -17,6 +17,7 @@ from backend.app.models.db import (
     VectorEntry,
 )
 from backend.app.parsers.local_mineru import LocalMinerUParserAdapter
+from backend.app.parsers.mineru import MinerUParserAdapter
 from backend.app.parsers.mock import MockParser
 from backend.app.parsers.remote_mineru import RemoteMinerUParserAdapter
 from backend.app.rag.service import RAGService
@@ -33,8 +34,13 @@ from backend.app.schemas.api import (
     LocalMinerUIngestResponse,
     LocalMinerURunRead,
     LocalMinerUStatus,
+    MinerUPipelineIngestResponse,
+    MinerUPipelineRunRead,
     MinerURemoteSettingsRead,
     MinerURemoteSettingsUpdate,
+    MinerUSettingsRead,
+    MinerUSettingsUpdate,
+    MinerUSourceExample,
     MockParseRequest,
     QueryRequest,
     QueryResponse,
@@ -54,6 +60,7 @@ from backend.app.services.settings_service import (
     LLM_BASE_URL_KEY,
     LLM_MODEL_KEY,
     LLM_PROVIDER_KEY,
+    MINERU_API_URL_KEY,
     MINERU_REMOTE_HOST_KEY,
     MINERU_REMOTE_KEY_PATH_KEY,
     MINERU_REMOTE_OUTPUT_DIR_KEY,
@@ -61,10 +68,162 @@ from backend.app.services.settings_service import (
     MINERU_REMOTE_PORT_KEY,
     MINERU_REMOTE_USER_KEY,
     MINERU_REMOTE_WORK_DIR_KEY,
+    MINERU_SOURCE_KEY,
     AppSettingsService,
 )
 
 router = APIRouter()
+
+MINERU_SOURCE_OPTIONS = {"mock", "local-cli", "remote-ssh", "remote-api"}
+
+
+def _mineru_examples() -> list[MinerUSourceExample]:
+    return [
+        MinerUSourceExample(
+            source="local-cli",
+            label="Local MinerU CLI",
+            description=(
+                "Run `mineru -p <input_path> -o <output_path> -b pipeline` "
+                "on the same machine as the API service."
+            ),
+            example_config={
+                "mineru_source": "local-cli",
+                "mineru_cli_command": "mineru",
+                "notes": [
+                    "Suitable when MinerU is installed locally.",
+                    (
+                        "The upload endpoint will save the PDF locally, run "
+                        "MinerU, then ingest parsed output into the knowledge base."
+                    ),
+                ],
+            },
+        ),
+        MinerUSourceExample(
+            source="remote-ssh",
+            label="Remote MinerU Server (SSH)",
+            description=(
+                "Upload the PDF to a remote Linux server over SSH, run "
+                "MinerU there, download artifacts, then ingest them."
+            ),
+            example_config={
+                "mineru_source": "remote-ssh",
+                "mineru_remote_host": "172.31.22.13",
+                "mineru_remote_port": 22,
+                "mineru_remote_user": "root",
+                "mineru_remote_work_dir": "/tmp/medrag_mineru",
+                "mineru_remote_output_dir": "./data/mineru_remote_outputs",
+                "notes": [
+                    "Use password or key-based SSH authentication.",
+                    "Recommended when MinerU only exists on a GPU or Linux server.",
+                ],
+            },
+        ),
+        MinerUSourceExample(
+            source="remote-api",
+            label="Remote MinerU HTTP API",
+            description=(
+                "Call a remote MinerU-compatible HTTP service that accepts "
+                "PDF upload and returns normalized artifacts."
+            ),
+            example_config={
+                "mineru_source": "remote-api",
+                "mineru_api_url": "https://mineru.example.com/api",
+                "notes": [
+                    (
+                        "The upload endpoint will forward the PDF to the "
+                        "remote MinerU API, then ingest the returned result."
+                    ),
+                    (
+                        "This requires the remote API to expose `/parse` and "
+                        "`/parse/{task_id}` style endpoints."
+                    ),
+                ],
+            },
+        ),
+        MinerUSourceExample(
+            source="mock",
+            label="Mock Parser",
+            description=(
+                "Use bundled sample MinerU JSON for development and API smoke "
+                "tests without running MinerU."
+            ),
+            example_config={
+                "mineru_source": "mock",
+                "notes": [
+                    "Useful for local development and demo fallback.",
+                    "The upload endpoint can skip the real MinerU step in this mode.",
+                ],
+            },
+        ),
+    ]
+
+
+def _build_mineru_settings_read(service: AppSettingsService) -> MinerUSettingsRead:
+    payload = service.all_public_settings()
+    return MinerUSettingsRead(
+        **payload,
+        examples=_mineru_examples(),
+        recommended_upload_endpoint="/api/v1/knowledge-bases/{kb_id}/documents/ingest",
+    )
+
+
+async def _save_uploaded_file(file: UploadFile) -> Path:
+    settings = get_settings()
+    settings.storage_dir.mkdir(parents=True, exist_ok=True)
+    saved_path = settings.storage_dir / file.filename
+    saved_path.write_bytes(await file.read())
+    return saved_path
+
+
+def _pipeline_run_for_api(
+    source: str,
+    parser_name: str,
+    input_file: str | None,
+    mineru_api_url: str | None,
+) -> MinerUPipelineRunRead:
+    return MinerUPipelineRunRead(
+        source=source,
+        parser=parser_name,
+        status="completed",
+        input_file=input_file,
+        mineru_api_url=mineru_api_url,
+    )
+
+
+def _pipeline_run_for_local(source: str, input_file: str | None, run: LocalMinerURunRead):
+    return MinerUPipelineRunRead(
+        source=source,
+        parser="local-cli",
+        status="completed",
+        input_file=input_file,
+        command=run.command,
+        output_dir=run.output_dir,
+        artifacts=run.artifacts,
+        stdout=run.stdout,
+        stderr=run.stderr,
+        duration_seconds=run.duration_seconds,
+    )
+
+
+def _pipeline_run_for_remote(
+    source: str,
+    input_file: str | None,
+    remote_host: str | None,
+    run: LocalMinerURunRead,
+):
+    return MinerUPipelineRunRead(
+        source=source,
+        parser="remote-ssh",
+        status="completed",
+        input_file=input_file,
+        command=run.command,
+        output_dir=run.output_dir,
+        artifacts=run.artifacts,
+        stdout=run.stdout,
+        stderr=run.stderr,
+        duration_seconds=run.duration_seconds,
+        remote_host=remote_host,
+    )
 
 
 @router.post("/knowledge-bases", response_model=KnowledgeBaseRead)
@@ -177,6 +336,106 @@ async def upload_document(
         saved_path.write_bytes(await file.read())
     document = IndexingService(db).ingest_pdf(kb_id, saved_path)
     return DocumentRead(**document_to_dict(document))
+
+
+@router.post(
+    "/knowledge-bases/{kb_id}/documents/ingest",
+    response_model=MinerUPipelineIngestResponse,
+)
+async def ingest_document_with_mineru_pipeline(
+    kb_id: int,
+    file: UploadFile | None = File(default=None),
+    source_override: str | None = Form(default=None),
+    method: str = Form(default="auto"),
+    lang: str = Form(default="ch"),
+    formula: bool = Form(default=True),
+    table: bool = Form(default=True),
+    db: Session = Depends(db_session),
+):
+    if not KnowledgeBaseService(db).get(kb_id):
+        raise HTTPException(status_code=404, detail="Knowledge base not found")
+    if method not in {"auto", "txt", "ocr"}:
+        raise HTTPException(status_code=400, detail="Unsupported MinerU method")
+
+    app_settings = AppSettingsService(db)
+    mineru_settings = app_settings.effective_mineru_settings()
+    source = (source_override or mineru_settings.source).strip().lower()
+    if source not in MINERU_SOURCE_OPTIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported MinerU source '{source}'.",
+        )
+    if source != "mock" and file is None:
+        raise HTTPException(
+            status_code=400,
+            detail="A PDF file is required unless mineru_source is 'mock'.",
+        )
+
+    saved_path = await _save_uploaded_file(file) if file else None
+
+    if source == "local-cli":
+        settings = get_settings()
+        settings.mineru_local_output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = settings.mineru_local_output_dir / (saved_path.stem if saved_path else "input")
+        parser = LocalMinerUParserAdapter(
+            output_dir=output_dir,
+            method=method,
+            lang=lang,
+            formula=formula,
+            table=table,
+        )
+        document = IndexingService(db, parser=parser).ingest_pdf(kb_id, saved_path)
+        if parser.last_run is None:
+            raise HTTPException(status_code=500, detail="MinerU did not produce run metadata")
+        pipeline = _pipeline_run_for_local(
+            source,
+            str(saved_path) if saved_path else None,
+            LocalMinerURunRead(**parser.last_run.__dict__),
+        )
+    elif source == "remote-ssh":
+        remote_settings = mineru_settings.remote
+        remote_settings.output_dir.mkdir(parents=True, exist_ok=True)
+        parser = RemoteMinerUParserAdapter(
+            method=method,
+            lang=lang,
+            formula=formula,
+            table=table,
+            remote_settings=remote_settings,
+        )
+        document = IndexingService(db, parser=parser).ingest_pdf(kb_id, saved_path)
+        if parser.last_run is None:
+            raise HTTPException(
+                status_code=500, detail="Remote MinerU did not produce run metadata"
+            )
+        pipeline = _pipeline_run_for_remote(
+            source,
+            str(saved_path) if saved_path else None,
+            remote_settings.host,
+            LocalMinerURunRead(**parser.last_run.__dict__),
+        )
+    elif source == "remote-api":
+        parser = MinerUParserAdapter(mineru_api_url=mineru_settings.api_url)
+        document = IndexingService(db, parser=parser).ingest_pdf(kb_id, saved_path)
+        pipeline = _pipeline_run_for_api(
+            source,
+            "remote-api",
+            str(saved_path) if saved_path else None,
+            mineru_settings.api_url,
+        )
+    else:
+        parser = MockParser()
+        document = IndexingService(db, parser=parser).ingest_pdf(kb_id, saved_path)
+        pipeline = _pipeline_run_for_api(
+            source,
+            "mock",
+            str(saved_path) if saved_path else None,
+            None,
+        )
+
+    return MinerUPipelineIngestResponse(
+        document=DocumentRead(**document_to_dict(document)),
+        pipeline=pipeline,
+    )
 
 
 @router.post(
@@ -409,9 +668,11 @@ def public_config(db: Session = Depends(db_session)):
         "jina_api_key_configured": app_settings["jina_api_key_configured"],
         "jina_api_key_masked": app_settings["jina_api_key_masked"],
         "vector_store": settings.vector_store,
-        "mineru_api_url": settings.mineru_api_url,
-        "mineru_cli_command": settings.mineru_cli_command,
-        "mineru_local_output_dir": str(settings.mineru_local_output_dir),
+        "mineru_source": app_settings["mineru_source"],
+        "mineru_source_origin": app_settings["mineru_source_origin"],
+        "mineru_api_url": app_settings["mineru_api_url"],
+        "mineru_cli_command": app_settings["mineru_cli_command"],
+        "mineru_local_output_dir": app_settings["mineru_local_output_dir"],
         "mineru_remote_host": app_settings["mineru_remote_host"],
         "mineru_remote_port": app_settings["mineru_remote_port"],
         "mineru_remote_user": app_settings["mineru_remote_user"],
@@ -423,11 +684,7 @@ def public_config(db: Session = Depends(db_session)):
         "mineru_remote_password_masked": app_settings["mineru_remote_password_masked"],
         "mineru_remote_configured": app_settings["mineru_remote_configured"],
         "parser_mode": (
-            "remote-mineru"
-            if app_settings["mineru_remote_configured"]
-            else "remote-api-mineru"
-            if settings.mineru_api_url
-            else "mock/local-mineru"
+            app_settings["mineru_source"]
         ),
         "llm_provider": app_settings["llm_provider"],
         "llm_base_url": app_settings["llm_base_url"],
@@ -478,6 +735,40 @@ def update_embedding_settings(
 @router.get("/settings/llm", response_model=LLMSettingsRead)
 def get_llm_settings(db: Session = Depends(db_session)):
     return LLMSettingsRead(**AppSettingsService(db).all_public_settings())
+
+
+@router.get("/settings/mineru", response_model=MinerUSettingsRead)
+def get_mineru_settings(db: Session = Depends(db_session)):
+    return _build_mineru_settings_read(AppSettingsService(db))
+
+
+@router.put("/settings/mineru", response_model=MinerUSettingsRead)
+def update_mineru_settings(payload: MinerUSettingsUpdate, db: Session = Depends(db_session)):
+    service = AppSettingsService(db)
+    if payload.mineru_source is not None:
+        source = payload.mineru_source.strip().lower()
+        if source not in MINERU_SOURCE_OPTIONS:
+            raise HTTPException(status_code=400, detail="Unsupported MinerU source")
+        service.set(MINERU_SOURCE_KEY, source)
+    if payload.mineru_api_url is not None:
+        service.set(MINERU_API_URL_KEY, payload.mineru_api_url.strip())
+    if payload.mineru_remote_host is not None:
+        service.set(MINERU_REMOTE_HOST_KEY, payload.mineru_remote_host.strip())
+    if payload.mineru_remote_port is not None:
+        service.set(MINERU_REMOTE_PORT_KEY, str(payload.mineru_remote_port))
+    if payload.mineru_remote_user is not None:
+        service.set(MINERU_REMOTE_USER_KEY, payload.mineru_remote_user.strip())
+    if payload.mineru_remote_password is not None:
+        password = payload.mineru_remote_password.strip()
+        if password and not password.startswith("***"):
+            service.set(MINERU_REMOTE_PASSWORD_KEY, password)
+    if payload.mineru_remote_key_path is not None:
+        service.set(MINERU_REMOTE_KEY_PATH_KEY, payload.mineru_remote_key_path.strip())
+    if payload.mineru_remote_work_dir is not None:
+        service.set(MINERU_REMOTE_WORK_DIR_KEY, payload.mineru_remote_work_dir.strip())
+    if payload.mineru_remote_output_dir is not None:
+        service.set(MINERU_REMOTE_OUTPUT_DIR_KEY, payload.mineru_remote_output_dir.strip())
+    return _build_mineru_settings_read(service)
 
 
 @router.put("/settings/llm", response_model=LLMSettingsRead)

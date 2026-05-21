@@ -44,6 +44,45 @@ class LocalMinerUIngestResponse(BaseModel):
     mineru: LocalMinerURunRead
 
 
+class MinerUSourceExample(BaseModel):
+    source: str
+    label: str
+    description: str
+    example_config: dict[str, Any] = Field(default_factory=dict)
+
+
+class MinerUSettingsRead(BaseModel):
+    mineru_source: str
+    mineru_source_origin: str
+    mineru_api_url: str | None = None
+    mineru_cli_command: str
+    mineru_local_output_dir: str
+    mineru_remote_host: str | None = None
+    mineru_remote_port: int = 22
+    mineru_remote_user: str = "root"
+    mineru_remote_key_path: str | None = None
+    mineru_remote_work_dir: str = "/tmp/medrag_mineru"
+    mineru_remote_output_dir: str = "./data/mineru_remote_outputs"
+    mineru_remote_source: str = "environment"
+    mineru_remote_password_configured: bool = False
+    mineru_remote_password_masked: str | None = None
+    mineru_remote_configured: bool = False
+    examples: list[MinerUSourceExample] = Field(default_factory=list)
+    recommended_upload_endpoint: str
+
+
+class MinerUSettingsUpdate(BaseModel):
+    mineru_source: str | None = None
+    mineru_api_url: str | None = None
+    mineru_remote_host: str | None = None
+    mineru_remote_port: int | None = Field(default=None, ge=1, le=65535)
+    mineru_remote_user: str | None = None
+    mineru_remote_password: str | None = None
+    mineru_remote_key_path: str | None = None
+    mineru_remote_work_dir: str | None = None
+    mineru_remote_output_dir: str | None = None
+
+
 class LocalMinerUStatus(BaseModel):
     available: bool
     command: str
@@ -162,3 +201,23 @@ class MinerURemoteSettingsUpdate(BaseModel):
     mineru_remote_key_path: str | None = None
     mineru_remote_work_dir: str | None = None
     mineru_remote_output_dir: str | None = None
+
+
+class MinerUPipelineRunRead(BaseModel):
+    source: str
+    parser: str
+    status: str = "completed"
+    input_file: str | None = None
+    output_dir: str | None = None
+    command: list[str] = Field(default_factory=list)
+    artifacts: list[str] = Field(default_factory=list)
+    stdout: str = ""
+    stderr: str = ""
+    duration_seconds: float | None = None
+    mineru_api_url: str | None = None
+    remote_host: str | None = None
+
+
+class MinerUPipelineIngestResponse(BaseModel):
+    document: DocumentRead
+    pipeline: MinerUPipelineRunRead

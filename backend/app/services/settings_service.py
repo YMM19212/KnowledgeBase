@@ -13,6 +13,8 @@ LLM_PROVIDER_KEY = "llm.provider"
 LLM_BASE_URL_KEY = "llm.base_url"
 LLM_MODEL_KEY = "llm.model"
 LLM_API_KEY_KEY = "llm.api_key"
+MINERU_SOURCE_KEY = "mineru.source"
+MINERU_API_URL_KEY = "mineru.api_url"
 MINERU_REMOTE_HOST_KEY = "mineru.remote.host"
 MINERU_REMOTE_PORT_KEY = "mineru.remote.port"
 MINERU_REMOTE_USER_KEY = "mineru.remote.user"
@@ -49,6 +51,16 @@ class EffectiveMinerURemoteSettings:
     work_dir: str
     output_dir: Path
     source: str
+
+
+@dataclass(frozen=True)
+class EffectiveMinerUSettings:
+    source: str
+    api_url: str | None
+    cli_command: str
+    local_output_dir: Path
+    remote: EffectiveMinerURemoteSettings
+    source_origin: str
 
 
 class AppSettingsService:
@@ -134,10 +146,34 @@ class AppSettingsService:
             source=source,
         )
 
+    def effective_mineru_settings(self) -> EffectiveMinerUSettings:
+        settings = get_settings()
+        remote = self.effective_mineru_remote_settings()
+        source = self.get(MINERU_SOURCE_KEY)
+        api_url = self.get(MINERU_API_URL_KEY) or settings.mineru_api_url
+        if not source:
+            if remote.host and (remote.password or remote.key_path):
+                source = "remote-ssh"
+            elif api_url:
+                source = "remote-api"
+            elif settings.mineru_cli_command:
+                source = "local-cli"
+            else:
+                source = "mock"
+        return EffectiveMinerUSettings(
+            source=source,
+            api_url=api_url,
+            cli_command=settings.mineru_cli_command,
+            local_output_dir=settings.mineru_local_output_dir,
+            remote=remote,
+            source_origin="database" if self.get(MINERU_SOURCE_KEY) else "environment",
+        )
+
     def all_public_settings(self) -> dict[str, str | int | bool | None]:
         effective = self.effective_embedding_settings()
         llm = self.effective_llm_settings()
-        mineru_remote = self.effective_mineru_remote_settings()
+        mineru = self.effective_mineru_settings()
+        mineru_remote = mineru.remote
         return {
             "embedding_backend": effective.backend,
             "embedding_model": effective.model,
@@ -150,6 +186,11 @@ class AppSettingsService:
             "llm_source": llm.source,
             "llm_api_key_configured": bool(llm.api_key),
             "llm_api_key_masked": mask_secret(llm.api_key),
+            "mineru_source": mineru.source,
+            "mineru_source_origin": mineru.source_origin,
+            "mineru_api_url": mineru.api_url,
+            "mineru_cli_command": mineru.cli_command,
+            "mineru_local_output_dir": str(mineru.local_output_dir),
             "mineru_remote_host": mineru_remote.host,
             "mineru_remote_port": mineru_remote.port,
             "mineru_remote_user": mineru_remote.user,
