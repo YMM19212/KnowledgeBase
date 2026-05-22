@@ -132,12 +132,15 @@ class QueryRequest(BaseModel):
 class Citation(BaseModel):
     chunk_id: str
     document_id: str
+    document_type: str | None = None
     section_path: str
     page_start: int | None = None
     page_end: int | None = None
     citation_text: str
     source_text: str
     score: float
+    evidence_role: str | None = None
+    extraction_mode: str | None = None
 
 
 class QueryResponse(BaseModel):

@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.core.config import get_settings
+from backend.app.core.medical_profiles import has_medical_scope_hint
 from backend.app.models.db import ChunkRecord, DocumentRecord
 from backend.app.rag.llm import OpenAICompatibleLLM
 
@@ -104,6 +105,8 @@ class QueryGuard:
                 "greeting",
                 "当前问题不属于医疗文献检索问题，无法基于知识库证据回答。",
             )
+        if has_medical_scope_hint(query):
+            return QueryGuardDecision("defer", "medical_scope_hint_present")
         if any(token in lowered for token in STRUCTURED_HINTS):
             return QueryGuardDecision("defer", "structured_hint_present")
 

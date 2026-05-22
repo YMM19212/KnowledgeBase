@@ -37,8 +37,9 @@ This helps the retriever return baseline tables, endpoint tables, and clinical f
 
 ## Medical Evidence Units
 
-Medical Semantic Chunking v2 adds an evidence-unit layer on top of chunks. Each
-chunk is classified into a retrieval-facing evidence type:
+Medical Semantic Chunking v2 adds an evidence-unit layer on top of chunks.
+Compatibility is preserved through broad retrieval-facing `evidence_type`
+values:
 
 - `abstract_result`
 - `primary_outcome`
@@ -48,19 +49,41 @@ chunk is classified into a retrieval-facing evidence type:
 - `clinical_question_answer`
 - `safety_or_adverse_event`
 
+Each chunk also stores a more specific `evidence_role` for evidence-aware
+ranking:
+
+- `baseline_table`
+- `eligibility_criteria`
+- `intervention_arm`
+- `comparator_arm`
+- `primary_endpoint_result`
+- `secondary_endpoint_result`
+- `adverse_event_result`
+- `recommendation_block`
+- `question_answer_block`
+- `abstract_result`
+
 The evidence unit is persisted in `evidence_units` and mirrored into chunk
-metadata. It stores a short claim, normalized facts, source text, page span,
-citation text, confidence, and evidence sufficiency.
+metadata. It stores a short claim, page span, citation text, confidence,
+evidence sufficiency, and a structured `normalized_facts` payload with
+document-type-specific fields:
+
+- `trial`: population, arm, comparator, endpoint type, timepoint, effect
+  measure, effect value, CI, P value, adverse event
+- `guideline`: recommendation statement, recommendation grade, evidence grade,
+  clinical question id, target population
+- `review_meta`: study count, sample size, pooled effect, heterogeneity
+- `table`: role, table id, title, caption, headers, key values
 
 ## Kimi Enrichment
 
-Rules always run first. If Kimi/Moonshot is configured, the ingest pipeline sends
-each chunk to the OpenAI-compatible chat API once during ingestion or evidence
-rebuild. Kimi can enrich fields such as outcomes, groups, timepoints, values,
-units, limitations, and evidence sufficiency.
+Rules always run first. If Kimi/Moonshot is configured, the ingest pipeline
+sends each chunk to the OpenAI-compatible chat API once during ingestion or
+evidence rebuild. Kimi can enrich structured fields for trial results,
+guideline recommendations, review/meta summaries, and tables.
 
 Kimi failures do not block ingestion. The system falls back to rule-generated
-evidence and records `llm_enriched=false`.
+evidence, records `llm_enriched=false`, and keeps `extraction_mode=rule`.
 
 ## Fallback Token Control
 
@@ -80,5 +103,8 @@ Each chunk stores:
 - `source_span`
 - `citation_text`
 - `evidence_type`
+- `evidence_role`
+- `document_type`
 - `evidence_sufficiency`
+- `extraction_mode`
 - `llm_enriched`

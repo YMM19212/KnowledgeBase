@@ -16,18 +16,31 @@ The project turns parsed medical literature into a traceable RAG knowledge base.
 
 3. Chunking layer
    - `MedicalSemanticChunker` uses section hierarchy first.
+   - It normalizes section paths and identifies medical evidence roles such as
+     `primary_endpoint_result`, `recommendation_block`, and `baseline_table`.
    - `max_tokens` and `overlap_tokens` are fallback controls for unusually long sections.
    - Tables and figure captions become first-class chunks.
 
-4. Storage layer
+4. Evidence layer
+   - `EvidenceService` persists `evidence_units` from chunk metadata.
+   - Rule extraction builds structured trial, guideline, review/meta, and table
+     facts.
+   - Optional Kimi enrichment runs only during ingestion or evidence rebuild and
+     writes `extraction_mode=hybrid` when successful.
+
+5. Storage layer
    - SQLite stores KB metadata, document metadata, chunks, and fallback vectors.
    - Chroma is the production local vector store adapter.
 
-5. RAG layer
+6. RAG layer
    - Embeddings are provided by sentence-transformers when available.
    - Jina Embeddings can be used for multilingual retrieval through the runtime settings page.
    - Hash embeddings allow offline deterministic tests and demos.
-   - Query responses always include citations and source text.
+   - QueryGuard blocks out-of-scope prompts but lets broad in-scope medical
+     prompts continue.
+   - Retrieval reranking is evidence-aware rather than similarity-only.
+   - Query responses always include citations and source text, with optional
+     `document_type`, `evidence_role`, and `extraction_mode`.
 
 ## Data Flow
 
@@ -37,6 +50,7 @@ PDF or sample JSON
   -> ParsedDocument
   -> MedicalSemanticChunker.chunk()
   -> Chunk records in SQLite
+  -> EvidenceService.replace_document_evidence()
   -> embeddings.embed_texts()
   -> vector_store.upsert()
   -> RAGService.query()

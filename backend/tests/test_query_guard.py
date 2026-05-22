@@ -25,6 +25,15 @@ def test_query_guard_rejects_greeting(db_session):
     assert decision.reason == "greeting"
 
 
+def test_query_guard_allows_broad_medical_scope_query(db_session):
+    kb = KnowledgeBaseService(db_session).create("Guard Scope KB")
+    IndexingService(db_session, embeddings=HashEmbeddingService()).ingest_pdf(kb.id)
+
+    decision = QueryGuard(db_session).evaluate(kb.id, "主要结局是什么")
+
+    assert decision.action in {"defer", "retrieve"}
+
+
 def test_query_guard_llm_marks_needs_hint(db_session):
     kb = KnowledgeBaseService(db_session).create("Guard LLM KB")
     IndexingService(db_session, embeddings=HashEmbeddingService()).ingest_pdf(kb.id)

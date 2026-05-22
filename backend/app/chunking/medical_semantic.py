@@ -2,6 +2,13 @@ import re
 from collections.abc import Iterable
 from hashlib import sha1
 
+from backend.app.core.medical_profiles import (
+    classify_table_role,
+    classify_text_role,
+    extract_question_id,
+    infer_document_type,
+    normalize_section_path,
+)
 from backend.app.schemas.parsed import Chunk, Figure, ParsedDocument, Section, Table
 
 MEDICAL_SECTION_PATTERNS = {
@@ -32,25 +39,34 @@ class MedicalSemanticChunker:
 
     def chunk(self, document: ParsedDocument) -> list[Chunk]:
         chunks: list[Chunk] = []
+        document_type = infer_document_type(
+            document.title,
+            document.abstract,
+            self._section_titles(document.sections),
+        )
         if document.abstract:
+            chunks.extend(self._abstract_chunks(document, document_type, len(chunks)))
+        for section in document.sections:
             chunks.extend(
-                self._text_chunks(
-                    document_id=document.document_id,
-                    text=document.abstract,
-                    section_path="Abstract",
-                    page_start=1,
-                    page_end=1,
-                    ordinal=len(chunks),
+                self._chunk_section(
+                    document.document_id,
+                    section,
+                    [],
+                    len(chunks),
+                    document_type,
                 )
             )
-        for section in document.sections:
-            chunks.extend(self._chunk_section(document.document_id, section, [], len(chunks)))
         return chunks
 
     def _chunk_section(
-        self, document_id: str, section: Section, parents: list[str], start_ordinal: int
+        self,
+        document_id: str,
+        section: Section,
+        parents: list[str],
+        start_ordinal: int,
+        document_type: str,
     ) -> list[Chunk]:
-        section_path = " > ".join([*parents, section.title])
+        section_path = normalize_section_path(" > ".join([*parents, section.title]))
         chunks: list[Chunk] = []
         text = "\n\n".join(p.text for p in section.paragraphs if p.text.strip())
         if text.strip():
@@ -62,20 +78,60 @@ class MedicalSemanticChunker:
                     page_start=section.page_start,
                     page_end=section.page_end,
                     ordinal=start_ordinal + len(chunks),
+                    document_type=document_type,
                 )
             )
         for table in section.tables:
             chunks.append(
-                self._table_chunk(document_id, table, section_path, start_ordinal + len(chunks))
+                self._table_chunk(
+                    document_id,
+                    table,
+                    section_path,
+                    start_ordinal + len(chunks),
+                    document_type,
+                )
             )
         for figure in section.figures:
             chunks.append(
-                self._figure_chunk(document_id, figure, section_path, start_ordinal + len(chunks))
+                self._figure_chunk(
+                    document_id,
+                    figure,
+                    section_path,
+                    start_ordinal + len(chunks),
+                    document_type,
+                )
             )
         for child in section.subsections:
             chunks.extend(
                 self._chunk_section(
-                    document_id, child, [*parents, section.title], start_ordinal + len(chunks)
+                    document_id,
+                    child,
+                    [*parents, section.title],
+                    start_ordinal + len(chunks),
+                    document_type,
+                )
+            )
+        return chunks
+
+    def _abstract_chunks(
+        self,
+        document: ParsedDocument,
+        document_type: str,
+        ordinal: int,
+    ) -> list[Chunk]:
+        segments = self._split_abstract(document.abstract or "")
+        chunks: list[Chunk] = []
+        for idx, (label, text) in enumerate(segments):
+            section_path = normalize_section_path(f"Abstract > {label}")
+            chunks.extend(
+                self._text_chunks(
+                    document_id=document.document_id,
+                    text=text,
+                    section_path=section_path,
+                    page_start=1,
+                    page_end=1,
+                    ordinal=ordinal + idx,
+                    document_type=document_type,
                 )
             )
         return chunks
@@ -88,37 +144,65 @@ class MedicalSemanticChunker:
         page_start: int | None,
         page_end: int | None,
         ordinal: int,
+        document_type: str,
     ) -> list[Chunk]:
         paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
         groups = self._group_paragraphs(paragraphs)
-        return [
-            Chunk(
-                document_id=document_id,
-                chunk_id=self._chunk_id(document_id, section_path, ordinal + idx, group),
-                content=group,
+        chunks: list[Chunk] = []
+        for idx, group in enumerate(groups):
+            evidence_role = classify_text_role(
                 section_path=section_path,
-                page_start=page_start,
-                page_end=page_end,
+                text=group,
                 content_type="text",
-                evidence_level=self._evidence_level(section_path),
-                source_span={"type": "section", "section_path": section_path},
-                citation_text=self._citation(section_path, page_start, page_end),
-                metadata={
-                    "section_path": section_path,
-                    "canonical_section": self._canonical_section(section_path),
-                    "evidence_type": self._evidence_type(section_path, "text"),
-                },
+                document_type=document_type,
+                page_start=page_start,
             )
-            for idx, group in enumerate(groups)
-        ]
+            question_id = extract_question_id(section_path)
+            metadata = {
+                "section_path": section_path,
+                "canonical_section": self._canonical_section(section_path),
+                "evidence_type": self._evidence_type(section_path, "text", evidence_role),
+                "evidence_role": evidence_role,
+                "document_type": document_type,
+            }
+            if question_id:
+                metadata["clinical_question_id"] = question_id
+            chunks.append(
+                Chunk(
+                    document_id=document_id,
+                    chunk_id=self._chunk_id(document_id, section_path, ordinal + idx, group),
+                    content=group,
+                    section_path=section_path,
+                    page_start=page_start,
+                    page_end=page_end,
+                    content_type="text",
+                    evidence_level=self._evidence_level(section_path, evidence_role),
+                    source_span={"type": "section", "section_path": section_path},
+                    citation_text=self._citation(section_path, page_start, page_end),
+                    metadata=metadata,
+                )
+            )
+        return chunks
 
     def _table_chunk(
-        self, document_id: str, table: Table, section_path: str, ordinal: int
+        self,
+        document_id: str,
+        table: Table,
+        section_path: str,
+        ordinal: int,
+        document_type: str,
     ) -> Chunk:
         content = "\n".join(
             item
             for item in [table.title or "", table.caption or "", table.markdown]
             if item.strip()
+        )
+        table_role = classify_table_role(
+            section_path=section_path,
+            title=table.title,
+            caption=table.caption,
+            markdown=table.markdown,
+            document_type=document_type,
         )
         return Chunk(
             document_id=document_id,
@@ -137,13 +221,30 @@ class MedicalSemanticChunker:
                 "section_path": section_path,
                 "canonical_section": self._canonical_section(section_path),
                 "evidence_type": "table_evidence",
+                "evidence_role": table_role,
                 "table_id": table.table_id,
+                "table_title": table.title,
+                "table_caption": table.caption,
+                "table_role": table_role,
+                "document_type": document_type,
             },
         )
 
     def _figure_chunk(
-        self, document_id: str, figure: Figure, section_path: str, ordinal: int
+        self,
+        document_id: str,
+        figure: Figure,
+        section_path: str,
+        ordinal: int,
+        document_type: str,
     ) -> Chunk:
+        evidence_role = classify_text_role(
+            section_path=section_path,
+            text=figure.caption,
+            content_type="figure_caption",
+            document_type=document_type,
+            page_start=figure.page_number,
+        )
         return Chunk(
             document_id=document_id,
             chunk_id=self._chunk_id(document_id, section_path, ordinal, figure.caption),
@@ -161,7 +262,9 @@ class MedicalSemanticChunker:
                 "section_path": section_path,
                 "canonical_section": self._canonical_section(section_path),
                 "evidence_type": "figure_evidence",
+                "evidence_role": evidence_role,
                 "figure_id": figure.figure_id,
+                "document_type": document_type,
             },
         )
 
@@ -169,6 +272,12 @@ class MedicalSemanticChunker:
         groups: list[str] = []
         current: list[str] = []
         for paragraph in paragraphs:
+            if self._forces_new_group(paragraph):
+                if current:
+                    groups.append("\n\n".join(current))
+                    current = []
+                groups.append(paragraph)
+                continue
             if self._token_count("\n\n".join([*current, paragraph])) <= self.max_tokens:
                 current.append(paragraph)
                 continue
@@ -193,6 +302,56 @@ class MedicalSemanticChunker:
     def _token_count(self, text: str) -> int:
         return max(1, len(re.findall(r"\w+|[\u4e00-\u9fff]", text)))
 
+    def _split_abstract(self, abstract: str) -> list[tuple[str, str]]:
+        text = abstract.strip()
+        if not text:
+            return []
+        labeled_parts = re.split(
+            r"(?i)\b(Background|Methods|Results|Conclusions?)\s*:\s*",
+            text,
+        )
+        if len(labeled_parts) > 1:
+            segments: list[tuple[str, str]] = []
+            prefix = labeled_parts[0].strip()
+            if prefix:
+                segments.append(("Summary", prefix))
+            for idx in range(1, len(labeled_parts), 2):
+                label = labeled_parts[idx].strip().title()
+                body = labeled_parts[idx + 1].strip() if idx + 1 < len(labeled_parts) else ""
+                if body:
+                    segments.append((label, body))
+            return segments
+        zh_parts = re.split(r"(背景|方法|结果|结论)\s*[：:]\s*", text)
+        if len(zh_parts) > 1:
+            segments = []
+            prefix = zh_parts[0].strip()
+            if prefix:
+                segments.append(("Summary", prefix))
+            for idx in range(1, len(zh_parts), 2):
+                label = zh_parts[idx].strip()
+                body = zh_parts[idx + 1].strip() if idx + 1 < len(zh_parts) else ""
+                if body:
+                    segments.append((label, body))
+            return segments
+        return [("Summary", text)]
+
+    def _forces_new_group(self, paragraph: str) -> bool:
+        return bool(re.match(r"^(recommendation|推荐意见)\s*[:：]", paragraph.strip(), re.I))
+
+    def _section_titles(
+        self,
+        sections: list[Section],
+        parents: list[str] | None = None,
+    ) -> list[str]:
+        parents = parents or []
+        titles: list[str] = []
+        for section in sections:
+            path = normalize_section_path(" > ".join([*parents, section.title]))
+            titles.append(path)
+            if section.subsections:
+                titles.extend(self._section_titles(section.subsections, [*parents, section.title]))
+        return titles
+
     def _canonical_section(self, section_path: str) -> str:
         text = section_path.lower()
         for canonical, pattern in MEDICAL_SECTION_PATTERNS.items():
@@ -200,20 +359,34 @@ class MedicalSemanticChunker:
                 return canonical
         return "other"
 
-    def _evidence_level(self, section_path: str) -> str | None:
+    def _evidence_level(self, section_path: str, evidence_role: str | None = None) -> str | None:
         canonical = self._canonical_section(section_path)
+        if evidence_role in {
+            "primary_endpoint_result",
+            "secondary_endpoint_result",
+            "adverse_event_result",
+            "recommendation_block",
+        }:
+            return "clinical_evidence"
         if canonical in {"primary outcome", "secondary outcome", "adverse events"}:
             return "clinical_outcome"
         if canonical in {"methods", "participants", "intervention"}:
             return "study_design"
         return None
 
-    def _evidence_type(self, section_path: str, content_type: str) -> str:
+    def _evidence_type(
+        self,
+        section_path: str,
+        content_type: str,
+        evidence_role: str | None = None,
+    ) -> str:
         if content_type == "table":
             return "table_evidence"
         if content_type == "figure_caption":
             return "figure_evidence"
         if re.search(r"问题[一二三四五六七八九十\d]+", section_path):
+            return "clinical_question_answer"
+        if evidence_role == "recommendation_block":
             return "clinical_question_answer"
         canonical = self._canonical_section(section_path)
         if canonical == "primary outcome":

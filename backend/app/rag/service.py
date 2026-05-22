@@ -11,7 +11,10 @@ from backend.app.models.db import ChunkRecord, DocumentRecord
 from backend.app.rag.embeddings import EmbeddingService, get_embedding_service
 from backend.app.rag.llm import OpenAICompatibleLLM
 from backend.app.rag.query_guard import QueryGuard
-from backend.app.services.evidence_service import EvidenceService, evidence_unit_to_dict
+from backend.app.services.evidence_service import (
+    EvidenceService,
+    evidence_unit_to_dict,
+)
 from backend.app.services.settings_service import AppSettingsService
 from backend.app.vectorstores.factory import get_vector_store
 
@@ -119,12 +122,15 @@ class RAGService:
                 {
                     "chunk_id": item["chunk_id"],
                     "document_id": item["document_id"],
+                    "document_type": item.get("document_type"),
                     "section_path": item["section_path"],
                     "page_start": item["page_start"],
                     "page_end": item["page_end"],
                     "citation_text": item["citation_text"],
                     "source_text": item["source_text"],
                     "score": item["score"],
+                    "evidence_role": item.get("evidence_role"),
+                    "extraction_mode": item.get("metadata", {}).get("extraction_mode"),
                 }
                 for item in usable
             ],
@@ -146,10 +152,13 @@ class RAGService:
             section_path = str(adjusted.get("section_path") or "").lower()
             content_type = str(adjusted.get("content_type") or "").lower()
             evidence_type = str(metadata.get("evidence_type") or "").lower()
+            evidence_role = str(metadata.get("evidence_role") or "").lower()
             citation_text = str(adjusted.get("citation_text") or "").lower()
             document_title = str(adjusted.get("document_title") or "").lower()
             table_id = str(metadata.get("table_id") or "").lower()
             figure_id = str(metadata.get("figure_id") or "").lower()
+            table_role = str(metadata.get("table_role") or "").lower()
+            document_type = str(metadata.get("document_type") or "").lower()
 
             if "results" in requested and "result" in section_path:
                 score += 0.25
@@ -169,6 +178,33 @@ class RAGService:
                 score += 0.15
             if "question" in requested and evidence_type == "clinical_question_answer":
                 score += 0.35
+            if "recommendation" in requested and evidence_role == "recommendation_block":
+                score += 0.45
+            if "eligibility" in requested and evidence_role == "eligibility_criteria":
+                score += 0.45
+            if "intervention" in requested and evidence_role == "intervention_arm":
+                score += 0.35
+            if "comparator" in requested and evidence_role == "comparator_arm":
+                score += 0.35
+            if "primary_endpoint" in requested:
+                if evidence_role == "primary_endpoint_result":
+                    score += 0.55
+                elif evidence_type == "primary_outcome":
+                    score += 0.25
+            if "secondary_endpoint" in requested:
+                if evidence_role == "secondary_endpoint_result":
+                    score += 0.5
+                elif evidence_type == "secondary_outcome":
+                    score += 0.2
+            if "adverse_event" in requested:
+                if evidence_role == "adverse_event_result":
+                    score += 0.5
+                if table_role == "safety_table":
+                    score += 0.25
+            if "baseline" in requested and table_role == "baseline_table":
+                score += 0.55
+            if "outcome_table" in requested and table_role == "outcome_table":
+                score += 0.45
             if "abstract" in requested and adjusted.get("page_start") == 1:
                 abstract_sections = {
                     "objectives",
@@ -204,6 +240,8 @@ class RAGService:
                 if isinstance(page_start, int) and isinstance(page_end, int):
                     if any(page_start <= page <= page_end for page in intent["page_refs"]):
                         score += 0.35
+            if intent["document_types"] and document_type in intent["document_types"]:
+                score += 0.12
 
             overlap = self._lexical_overlap(
                 intent["query_terms"],
@@ -231,6 +269,20 @@ class RAGService:
             "figure": ["figure", "fig.", "图"],
             "abstract": ["abstract", "摘要"],
             "question": ["问题一", "问题二", "问题三", "问题四", "问题五"],
+            "recommendation": ["recommendation", "推荐意见", "建议"],
+            "eligibility": ["eligibility", "inclusion", "exclusion", "纳入", "排除"],
+            "intervention": ["intervention", "treatment", "治疗", "干预"],
+            "comparator": ["placebo", "control", "对照"],
+            "primary_endpoint": ["primary outcome", "primary endpoint", "主要结局", "主要终点"],
+            "secondary_endpoint": [
+                "secondary outcome",
+                "secondary endpoint",
+                "次要结局",
+                "次要终点",
+            ],
+            "adverse_event": ["adverse events", "safety", "harms", "不良事件", "安全性"],
+            "baseline": ["baseline", "characteristics", "基线", "特征"],
+            "outcome_table": ["endpoint table", "outcome table", "结局表"],
         }
         requested = {
             section
@@ -282,12 +334,20 @@ class RAGService:
             for char in chinese_question_map
             if f"问题{char}" in query
         )
+        document_types: set[str] = set()
+        if any(term in query_lower for term in ["guideline", "consensus", "指南", "共识"]):
+            document_types.add("guideline_consensus")
+        if any(term in query_lower for term in ["trial", "randomized", "试验", "随机"]):
+            document_types.add("trial")
+        if any(term in query_lower for term in ["review", "meta", "综述"]):
+            document_types.add("review_meta")
         return {
             "requested_sections": requested,
             "table_refs": table_refs,
             "figure_refs": figure_refs,
             "page_refs": normalized_pages,
             "question_refs": {item.lower() for item in question_refs},
+            "document_types": document_types,
             "query_terms": self._tokenize_query_terms(query),
         }
 
@@ -343,6 +403,8 @@ class RAGService:
             "chunk_id": result.chunk_id,
             "document_id": result.document_id,
             "document_title": document.title if document else result.document_id,
+            "document_type": metadata.get("document_type", "other"),
+            "evidence_role": metadata.get("evidence_role", "general_text"),
             "content": result.content,
             "source_text": result.content,
             "score": result.score,

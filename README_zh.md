@@ -12,7 +12,7 @@
 - **远程 MinerU 接入**：支持通过 SSH/SFTP 调用服务器上的 MinerU，适合 Mac 本地不跑重任务、服务器负责清洗。
 - **医疗语义切分**：按医学论文结构切分，而不是固定字数切分，重点保留 Primary outcome、Secondary outcome、Adverse events、Subgroup analysis、Limitations 等上下文。
 - **医学证据单元**：入库时生成 `evidence_units`，把摘要结果、主要/次要结局、表格、图注、中文临床问题等转为可检索、可引用的证据块。
-- **Kimi 入库增强**：支持 Kimi K2.5 / Moonshot OpenAI-compatible API，在入库或 evidence 重建时抽取 outcomes、groups、timepoints、values、units 等结构化事实。
+- **Kimi 入库增强**：支持 Kimi / Moonshot OpenAI-compatible API，在入库或 evidence 重建时补充 trial、guideline、review/meta、table 四类结构化事实。
 - **可溯源 RAG**：回答返回 citations、document_id、section_path、page、score 和 source text，证据不足时明确拒答。
 - **Jina Embeddings**：内置 Jina Embeddings 支持，默认模型为 `jina-embeddings-v5-text-small`，系统设置页可修改。
 - **工程化后端**：FastAPI + SQLite + Chroma/SQLite Vector Store + Pydantic Settings + pytest。
@@ -42,7 +42,7 @@ SQLite + Chroma 或 SQLite fallback
         │
         ▼
 Evidence Units
-规则抽取 + 可选 Kimi K2.5 入库增强
+规则抽取 + 可选 Kimi 入库增强
         │
         ▼
 RAG Query
@@ -150,8 +150,8 @@ Kimi 只在入库或 evidence 重建时做结构化证据增强，不会在每�
 
 ```bash
 MEDRAG_LLM_PROVIDER=moonshot
-MEDRAG_LLM_BASE_URL=https://api.moonshot.ai/v1
-MEDRAG_LLM_MODEL=kimi-k2.5
+MEDRAG_LLM_BASE_URL=https://api.moonshot.cn/v1
+MEDRAG_LLM_MODEL=kimi-k2.6
 MEDRAG_LLM_API_KEY=your_kimi_api_key
 ```
 
@@ -162,6 +162,14 @@ MEDRAG_LLM_API_KEY=your_kimi_api_key
 ```
 
 如果未配置 Kimi，系统仍会使用规则抽取生成 evidence units，并记录 `llm_enriched=false`。
+
+当前实现里，Kimi 只参与：
+
+- 入库期结构化证据补全
+- evidence 重建
+- QueryGuard 的边界判定
+
+最终回答仍然受检索证据约束，不允许脱离 chunk/source 自由发挥。
 
 ## 使用本地 MinerU Pipeline 入库
 
