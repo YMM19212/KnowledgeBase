@@ -13,7 +13,10 @@
 - **医疗语义切分**：按医学论文结构切分，而不是固定字数切分，重点保留 Primary outcome、Secondary outcome、Adverse events、Subgroup analysis、Limitations 等上下文。
 - **医学证据单元**：入库时生成 `evidence_units`，把摘要结果、主要/次要结局、表格、图注、中文临床问题等转为可检索、可引用的证据块。
 - **Kimi 入库增强**：支持 Kimi / Moonshot OpenAI-compatible API，在入库或 evidence 重建时补充 trial、guideline、review/meta、table 四类结构化事实。
+- **证据感知检索**：检索阶段不再只依赖向量相似度，还会根据 `document_type`、`evidence_role`、表号、图号、问题编号和页码做重排。
+- **QueryGuard**：对“你好”“阴道炎是什么”这类库外问题直接拒答；对“主要结局是什么”“推荐意见是什么”这类宽泛但仍属于当前文献体裁的问题允许进入检索。
 - **可溯源 RAG**：回答返回 citations、document_id、section_path、page、score 和 source text，证据不足时明确拒答。
+- **比赛召回评测脚本**：支持直接基于 `CompetitionMinerU/` 跑 retrieval-only 评测，输出 `mixed` 和 `source-hint` 两种模式的召回报告。
 - **Jina Embeddings**：内置 Jina Embeddings 支持，默认模型为 `jina-embeddings-v5-text-small`，系统设置页可修改。
 - **工程化后端**：FastAPI + SQLite + Chroma/SQLite Vector Store + Pydantic Settings + pytest。
 - **专业 Web 控制台**：React + TypeScript + Vite + Tailwind，包含知识库管理、文档管理、RAG 问答、MinerU 配置、评测分析和系统设置。
@@ -43,10 +46,12 @@ SQLite + Chroma 或 SQLite fallback
         ▼
 Evidence Units
 规则抽取 + 可选 Kimi 入库增强
+trial / guideline / review_meta / table 结构化事实
         │
         ▼
 RAG Query
 Jina / Sentence Transformers / Hash Embedding
+QueryGuard + Evidence-aware rerank
         │
         ▼
 Answer + Citations + Retrieved Chunks
@@ -63,8 +68,10 @@ Answer + Citations + Retrieved Chunks
 - 文档解析状态查看
 - chunk 列表查看
 - evidence unit 生成、查看与重建
+- `document_type` / `evidence_role` / `extraction_mode` 回写
 - 重建索引
 - RAG 查询
+- retrieval-only 比赛评测脚本
 - Embedding 设置动态修改
 - MinerU CLI 状态检查
 - 系统统计与配置查看
@@ -277,6 +284,31 @@ make ingest-competition
 
 脚本会优先读取每篇文献的 `*_content_list.json`，自动标准化、语义切分、生成 evidence units、向量化并写入知识库。
 
+## 比赛召回评测
+
+如果当前目标是验证比赛样例上的“原文提取前置召回”能力，而不是看生成模型回答，可以直接运行 retrieval-only 评测脚本：
+
+```bash
+python scripts/eval_competition_retrieval.py \
+  --input-dir CompetitionMinerU \
+  --kb-name "Competition Retrieval Eval KB" \
+  --mode both
+```
+
+说明：
+
+- 脚本会临时关闭 LLM 生成，只保留解析结果、语义切分、evidence、embedding 和 rerank。
+- `mixed`：直接用官方问题做混库检索，更接近真实开放问法。
+- `source-hint`：在 query 中显式带文档名，用来验证单文档场景下能否稳定回到正确来源。
+- 评测结果会写入 `data/eval/competition_retrieval_report.json`。
+
+当前基于 5 篇 `CompetitionMinerU` 文档的实测结果：
+
+- `mixed`：`top1_source_recall = 0.4`，`top3_source_recall = 0.6`
+- `source-hint`：`top1_source_recall = 1.0`，`top3_source_recall = 1.0`
+
+这说明当前系统的主要瓶颈在“多文档混库时的文档级定位和图表级锚定”，而不是已清洗文档的入库流程本身。
+
 ## 导入样例数据
 
 如果暂时没有 PDF，可先导入样例临床试验文献：
@@ -319,6 +351,14 @@ curl -X POST http://localhost:8000/api/v1/query \
 - `retrieved_chunks`：完整检索片段，用于调试召回与排序。
 - `evidence_units`：入库阶段生成的医学证据单元，包含 evidence_type、claim_text、normalized_facts、confidence。
 - `evidence_sufficiency`：当前检索证据是否充分。
+- `answer_mode`：`llm` / `extractive` / `extractive-fallback` / `insufficient` / `guard-*`。
+- `guard_reason`：QueryGuard 的路由原因。
+
+`citations` 和 `retrieved_chunks` 中还会附带可选字段：
+
+- `document_type`
+- `evidence_role`
+- `extraction_mode`
 
 ## 核心 API
 
@@ -333,17 +373,23 @@ GET    /api/v1/knowledge-bases/{kb_id}
 DELETE /api/v1/knowledge-bases/{kb_id}
 
 POST   /api/v1/knowledge-bases/{kb_id}/documents
+POST   /api/v1/knowledge-bases/{kb_id}/documents/ingest
 POST   /api/v1/knowledge-bases/{kb_id}/documents/mineru-local
 GET    /api/v1/knowledge-bases/{kb_id}/documents
 GET    /api/v1/documents/{document_id}
 DELETE /api/v1/documents/{document_id}
 GET    /api/v1/documents/{document_id}/chunks
+GET    /api/v1/documents/{document_id}/evidence-units
 
 POST   /api/v1/knowledge-bases/{kb_id}/index/rebuild
+GET    /api/v1/knowledge-bases/{kb_id}/evidence-units
+POST   /api/v1/knowledge-bases/{kb_id}/evidence/rebuild
 POST   /api/v1/query
 POST   /api/v1/parse/mock
 
 GET    /api/v1/mineru/local/status
+GET    /api/v1/settings/mineru
+PUT    /api/v1/settings/mineru
 GET    /api/v1/settings/embedding
 PUT    /api/v1/settings/embedding
 ```
@@ -357,15 +403,16 @@ PUT    /api/v1/settings/embedding
 ├── backend/
 │   ├── app/
 │   │   ├── api/            FastAPI 路由
-│   │   ├── core/           配置与日志
+│   │   ├── core/           配置、日志、医学证据画像
 │   │   ├── db/             数据库连接
 │   │   ├── models/         SQLAlchemy 模型
 │   │   ├── schemas/        Pydantic Schema
 │   │   ├── parsers/        Mock / Local MinerU / Remote MinerU 适配器
-│   │   ├── chunking/       医疗语义切分
+│   │   ├── chunking/       医疗语义切分与证据块识别
 │   │   ├── vectorstores/   Chroma / SQLite 向量库
-│   │   ├── rag/            Embedding、LLM、RAG 查询
-│   │   └── services/       知识库、索引、设置等业务服务
+│   │   ├── rag/            Embedding、LLM、QueryGuard、RAG 查询
+│   │   ├── evaluation/     评测辅助模块
+│   │   └── services/       知识库、索引、Evidence、设置等业务服务
 │   └── tests/
 ├── frontend/
 │   ├── src/
@@ -376,7 +423,7 @@ PUT    /api/v1/settings/embedding
 │   └── README.md
 ├── docs/
 ├── examples/
-├── scripts/
+├── scripts/                导入、查询、评测脚本
 ├── data/
 ├── docker-compose.yml
 ├── Dockerfile
@@ -416,6 +463,9 @@ npm run build
 - Mock MinerU 样例导入
 - 本地 MinerU CLI Pipeline 入库
 - 已清洗 MinerU 目录批量导入
+- trial / guideline / review_meta / table 四类 evidence 结构化
+- QueryGuard + evidence-aware rerank
+- CompetitionMinerU retrieval-only 评测
 - Jina Embedding
 - SQLite/Chroma 向量索引
 - 可溯源 RAG 问答
