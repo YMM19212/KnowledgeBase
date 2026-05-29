@@ -163,7 +163,7 @@ class RemoteMinerUParserAdapter(BaseParser):
         }
         if self.key_path:
             connect_kwargs["key_filename"] = str(self.key_path)
-        elif self.password:
+        if self.password:
             connect_kwargs["password"] = self.password
         client.connect(**connect_kwargs)
         return client

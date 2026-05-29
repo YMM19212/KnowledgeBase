@@ -7,6 +7,7 @@ import type {
   LLMSettings,
   LocalMinerUIngestResponse,
   LocalMinerUStatus,
+  MinerUSettings,
   MinerURemoteSettings,
   PublicConfig,
   QueryResponse,
@@ -109,6 +110,22 @@ export const api = {
   },
   localMinerUStatus: () => request<LocalMinerUStatus>("/mineru/local/status"),
   remoteMinerUStatus: () => request<LocalMinerUStatus>("/mineru/remote/status"),
+  mineruSettings: () => request<MinerUSettings>("/settings/mineru"),
+  updateMineruSettings: (payload: {
+    mineru_source?: string;
+    mineru_api_url?: string;
+    mineru_remote_host?: string;
+    mineru_remote_port?: number;
+    mineru_remote_user?: string;
+    mineru_remote_password?: string;
+    mineru_remote_key_path?: string;
+    mineru_remote_work_dir?: string;
+    mineru_remote_output_dir?: string;
+  }) =>
+    request<MinerUSettings>("/settings/mineru", {
+      method: "PUT",
+      body: JSON.stringify(payload)
+    }),
   ingestWithRemoteMinerU: async (
     knowledgeBaseId: number,
     payload: {

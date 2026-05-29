@@ -167,6 +167,16 @@ def _build_mineru_settings_read(service: AppSettingsService) -> MinerUSettingsRe
     )
 
 
+def _normalize_optional_key_path(raw_value: str) -> str | None:
+    value = raw_value.strip()
+    if value in {"", ".", "./"}:
+        return None
+    path = Path(value).expanduser()
+    if path.exists() and path.is_dir():
+        return None
+    return value
+
+
 async def _save_uploaded_file(file: UploadFile) -> Path:
     settings = get_settings()
     settings.storage_dir.mkdir(parents=True, exist_ok=True)
@@ -763,7 +773,11 @@ def update_mineru_settings(payload: MinerUSettingsUpdate, db: Session = Depends(
         if password and not password.startswith("***"):
             service.set(MINERU_REMOTE_PASSWORD_KEY, password)
     if payload.mineru_remote_key_path is not None:
-        service.set(MINERU_REMOTE_KEY_PATH_KEY, payload.mineru_remote_key_path.strip())
+        key_path = _normalize_optional_key_path(payload.mineru_remote_key_path)
+        if key_path is None:
+            service.delete(MINERU_REMOTE_KEY_PATH_KEY)
+        else:
+            service.set(MINERU_REMOTE_KEY_PATH_KEY, key_path)
     if payload.mineru_remote_work_dir is not None:
         service.set(MINERU_REMOTE_WORK_DIR_KEY, payload.mineru_remote_work_dir.strip())
     if payload.mineru_remote_output_dir is not None:
@@ -820,8 +834,11 @@ def update_mineru_remote_settings(
         if password and not password.startswith("***"):
             service.set(MINERU_REMOTE_PASSWORD_KEY, password)
     if payload.mineru_remote_key_path is not None:
-        key_path = payload.mineru_remote_key_path.strip()
-        service.set(MINERU_REMOTE_KEY_PATH_KEY, key_path)
+        key_path = _normalize_optional_key_path(payload.mineru_remote_key_path)
+        if key_path is None:
+            service.delete(MINERU_REMOTE_KEY_PATH_KEY)
+        else:
+            service.set(MINERU_REMOTE_KEY_PATH_KEY, key_path)
     if payload.mineru_remote_work_dir is not None:
         work_dir = payload.mineru_remote_work_dir.strip().rstrip("/")
         if work_dir:

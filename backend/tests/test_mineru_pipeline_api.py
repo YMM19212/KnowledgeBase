@@ -38,3 +38,25 @@ def test_unified_ingest_endpoint_supports_mock_source(db_session):
     assert payload["document"]["knowledge_base_id"] == kb.id
     assert payload["pipeline"]["source"] == "mock"
     assert payload["pipeline"]["parser"] == "mock"
+
+
+def test_remote_mineru_key_path_directory_like_value_is_cleared(db_session):
+    app.dependency_overrides[db_session_dep] = lambda: db_session
+    try:
+        client = TestClient(app)
+        response = client.put(
+            "/api/v1/settings/mineru-remote",
+            json={
+                "mineru_remote_host": "172.31.22.13",
+                "mineru_remote_user": "root",
+                "mineru_remote_password": "secret",
+                "mineru_remote_key_path": ".",
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["mineru_remote_key_path"] is None
+    assert payload["mineru_remote_password_configured"] is True

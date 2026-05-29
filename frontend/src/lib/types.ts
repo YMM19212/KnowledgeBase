@@ -125,6 +125,8 @@ export type PublicConfig = {
   jina_api_key_masked?: string | null;
   vector_store: string;
   mineru_api_url?: string | null;
+  mineru_source?: string;
+  mineru_source_origin?: string;
   mineru_cli_command?: string;
   mineru_local_output_dir?: string;
   mineru_remote_host?: string | null;
@@ -145,6 +147,31 @@ export type PublicConfig = {
   llm_api_key_configured?: boolean;
   llm_api_key_masked?: string | null;
   llm_configured: boolean;
+};
+
+export type MinerUSettings = {
+  mineru_source: string;
+  mineru_source_origin: string;
+  mineru_api_url?: string | null;
+  mineru_cli_command: string;
+  mineru_local_output_dir: string;
+  mineru_remote_host?: string | null;
+  mineru_remote_port: number;
+  mineru_remote_user: string;
+  mineru_remote_key_path?: string | null;
+  mineru_remote_work_dir: string;
+  mineru_remote_output_dir: string;
+  mineru_remote_source: string;
+  mineru_remote_password_configured: boolean;
+  mineru_remote_password_masked?: string | null;
+  mineru_remote_configured: boolean;
+  recommended_upload_endpoint: string;
+  examples: Array<{
+    source: string;
+    label: string;
+    description: string;
+    example_config: Record<string, unknown>;
+  }>;
 };
 
 export type EmbeddingSettings = {

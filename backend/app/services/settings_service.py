@@ -79,6 +79,12 @@ class AppSettingsService:
             self.db.add(AppSetting(key=key, value=value))
         self.db.commit()
 
+    def delete(self, key: str) -> None:
+        setting = self.db.get(AppSetting, key)
+        if setting:
+            self.db.delete(setting)
+            self.db.commit()
+
     def effective_embedding_settings(self) -> EffectiveEmbeddingSettings:
         settings = get_settings()
         backend = self.get(EMBEDDING_BACKEND_KEY) or settings.embedding_backend
@@ -130,7 +136,7 @@ class AppSettingsService:
         user = self.get(MINERU_REMOTE_USER_KEY) or settings.mineru_remote_user
         password = self.get(MINERU_REMOTE_PASSWORD_KEY) or settings.mineru_remote_password
         key_path_raw = self.get(MINERU_REMOTE_KEY_PATH_KEY)
-        key_path = Path(key_path_raw) if key_path_raw else settings.mineru_remote_key_path
+        key_path = self._normalize_key_path(key_path_raw, settings.mineru_remote_key_path)
         work_dir = self.get(MINERU_REMOTE_WORK_DIR_KEY) or settings.mineru_remote_work_dir
         output_dir_raw = self.get(MINERU_REMOTE_OUTPUT_DIR_KEY)
         output_dir = Path(output_dir_raw) if output_dir_raw else settings.mineru_remote_output_dir
@@ -145,6 +151,23 @@ class AppSettingsService:
             output_dir=output_dir,
             source=source,
         )
+
+    def _normalize_key_path(
+        self,
+        raw_value: str | None,
+        fallback: Path | None,
+    ) -> Path | None:
+        candidate_raw = raw_value.strip() if raw_value is not None else None
+        if candidate_raw is not None:
+            if candidate_raw in {"", ".", "./"}:
+                return None
+            candidate = Path(candidate_raw).expanduser()
+            if candidate.exists() and candidate.is_dir():
+                return None
+            return candidate
+        if fallback and fallback.exists() and fallback.is_dir():
+            return None
+        return fallback
 
     def effective_mineru_settings(self) -> EffectiveMinerUSettings:
         settings = get_settings()
