@@ -12,12 +12,12 @@
 - **远程 MinerU 接入**：支持通过 SSH/SFTP 调用服务器上的 MinerU，适合 Mac 本地不跑重任务、服务器负责清洗。
 - **医疗语义切分**：按医学论文结构切分，而不是固定字数切分，重点保留 Primary outcome、Secondary outcome、Adverse events、Subgroup analysis、Limitations 等上下文。
 - **医学证据单元**：入库时生成 `evidence_units`，把摘要结果、主要/次要结局、表格、图注、中文临床问题等转为可检索、可引用的证据块。
-- **Kimi 入库增强**：支持 Kimi / Moonshot OpenAI-compatible API，在入库或 evidence 重建时补充 trial、guideline、review/meta、table 四类结构化事实。
+- **LLM 入库增强**：支持 OpenAI-compatible LLM 服务，在入库或 evidence 重建时补充 trial、guideline、review/meta、table 四类结构化事实。
 - **证据感知检索**：检索阶段不再只依赖向量相似度，还会根据 `document_type`、`evidence_role`、表号、图号、问题编号和页码做重排。
 - **QueryGuard**：对“你好”“阴道炎是什么”这类库外问题直接拒答；对“主要结局是什么”“推荐意见是什么”这类宽泛但仍属于当前文献体裁的问题允许进入检索。
 - **可溯源 RAG**：回答返回 citations、document_id、section_path、page、score 和 source text，证据不足时明确拒答。
 - **比赛召回评测脚本**：支持直接基于 `CompetitionMinerU/` 跑 retrieval-only 评测，输出 `mixed` 和 `source-hint` 两种模式的召回报告。
-- **Jina Embeddings**：内置 Jina Embeddings 支持，默认模型为 `jina-embeddings-v5-text-small`，系统设置页可修改。
+- **向量化模型服务**：支持远程向量化模型、本地 sentence-transformers 与 hash embedding，系统设置页可修改。
 - **工程化后端**：FastAPI + SQLite + Chroma/SQLite Vector Store + Pydantic Settings + pytest。
 - **专业 Web 控制台**：React + TypeScript + Vite + Tailwind，包含知识库管理、文档管理、RAG 问答、MinerU 配置、评测分析和系统设置。
 - **可部署**：提供 Dockerfile、docker-compose、Makefile、CLI 脚本和完整文档。
@@ -45,12 +45,12 @@ SQLite + Chroma 或 SQLite fallback
         │
         ▼
 Evidence Units
-规则抽取 + 可选 Kimi 入库增强
+规则抽取 + 可选 LLM 入库增强
 trial / guideline / review_meta / table 结构化事实
         │
         ▼
 RAG Query
-Jina / Sentence Transformers / Hash Embedding
+Remote Vector Service / Sentence Transformers / Hash Embedding
 QueryGuard + Evidence-aware rerank
         │
         ▼
@@ -85,7 +85,7 @@ Answer + Citations + Retrieved Chunks
 - **RAG 问答**：选择知识库、设置 top_k 和 metadata filter、展示 answer/citations/retrieved_chunks/evidence_units。
 - **MinerU 配置**：查看本地 MinerU CLI 状态、输出目录、Parser 模式。
 - **评测分析**：展示 Recall@K、Citation Coverage、Chunk Completeness 等 mock 指标。
-- **系统设置**：展示并修改 Embedding backend、model、Jina API key。
+- **系统设置**：展示并修改向量化 backend、model、服务 API key 以及 LLM 证据增强配置。
 
 ## 快速启动
 
@@ -128,49 +128,49 @@ docker compose up --build
 - 后端：`http://localhost:8000`
 - 前端：`http://localhost:5173`
 
-## 配置 Jina Embeddings
+## 配置向量化模型服务
 
-项目支持 Jina Embeddings。推荐配置：
+项目支持远程向量化模型服务、本地 sentence-transformers 与 hash embedding。下面示例使用本地向量化模型配置，适合直接本地启动：
 
 ```bash
-MEDRAG_EMBEDDING_BACKEND=jina
-MEDRAG_EMBEDDING_MODEL=jina-embeddings-v5-text-small
-MEDRAG_JINA_API_KEY=your_jina_api_key
+MEDRAG_EMBEDDING_BACKEND=sentence-transformers
+MEDRAG_EMBEDDING_MODEL=BAAI/bge-m3
 ```
 
 也可以在前端修改：
 
 ```text
-系统设置 → Embedding 设置
+系统设置 → 向量化模型设置
 ```
 
 说明：
 
 - API key 不会返回明文到前端，只展示脱敏值。
 - 前端保存的设置会写入 SQLite 的 `app_settings` 表，优先级高于 `.env`。
-- 修改 embedding backend/model 后，已入库文档需要重新向量化。
+- 修改向量化 backend/model 后，已入库文档需要重新向量化。
 - 重新向量化入口：`知识库详情 → 重建索引`。
+- 如果启用远程向量化服务，所需 API key 可在系统设置中录入；兼容性环境变量键名见 `.env.example`。
 
-## 配置 Kimi Evidence Enrichment
+## 配置 LLM Evidence Enrichment
 
-Kimi 只在入库或 evidence 重建时做结构化证据增强，不会在每次查询时实时调用。
+LLM 只在入库或 evidence 重建时做结构化证据增强，不会在每次查询时实时调用。下面示例展示的是当前默认 OpenAI-compatible 接口形态，具体 provider、base URL 和 model 可以替换为你自己的服务：
 
 ```bash
-MEDRAG_LLM_PROVIDER=moonshot
-MEDRAG_LLM_BASE_URL=https://api.moonshot.cn/v1
-MEDRAG_LLM_MODEL=kimi-k2.6
-MEDRAG_LLM_API_KEY=your_kimi_api_key
+MEDRAG_LLM_PROVIDER=openai-compatible-provider
+MEDRAG_LLM_BASE_URL=https://your-llm-endpoint/v1
+MEDRAG_LLM_MODEL=your-llm-model
+MEDRAG_LLM_API_KEY=your_llm_api_key
 ```
 
 也可以在前端修改：
 
 ```text
-系统设置 → Kimi Evidence Enrichment 设置
+系统设置 → LLM 证据增强设置
 ```
 
-如果未配置 Kimi，系统仍会使用规则抽取生成 evidence units，并记录 `llm_enriched=false`。
+如果未配置 LLM，系统仍会使用规则抽取生成 evidence units，并记录 `llm_enriched=false`。
 
-当前实现里，Kimi 只参与：
+当前实现里，LLM 只参与：
 
 - 入库期结构化证据补全
 - evidence 重建
@@ -211,7 +211,7 @@ mineru -p <input_path> -o <output_path> -b pipeline
   -> 回退读取其他 JSON 或 Markdown
   -> 标准化为 ParsedDocument
   -> 医疗语义切分
-  -> Evidence Unit 生成 / 可选 Kimi 增强
+  -> Evidence Unit 生成 / 可选 LLM 增强
   -> embedding
   -> 写入向量库
 ```
@@ -466,7 +466,7 @@ npm run build
 - trial / guideline / review_meta / table 四类 evidence 结构化
 - QueryGuard + evidence-aware rerank
 - CompetitionMinerU retrieval-only 评测
-- Jina Embedding
+- 远程向量化模型 / 本地 embedding
 - SQLite/Chroma 向量索引
 - 可溯源 RAG 问答
 - Web 控制台演示
